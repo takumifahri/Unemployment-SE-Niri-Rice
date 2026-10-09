@@ -88,7 +88,7 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 
 ### Waybar
 
-Bar tiga bagian berbentuk pil:
+Bar tiga bagian berbentuk pil:  
 <img src="docs/waybar.png" width="480" align="center">
 
 - **Kiri** — logo (klik → launcher), workspace berbentuk titik, CPU / RAM / disk (klik → monitor sistem).
