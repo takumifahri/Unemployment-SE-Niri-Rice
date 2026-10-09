@@ -1,0 +1,212 @@
+// FR Navy — waybar untuk niri
+{
+  "layer": "top",
+  "position": "top",
+  "height": 32,
+  "margin-top": 8,
+  "margin-left": 10,
+  "margin-right": 10,
+  "spacing": 4,
+  "modules-left": [
+    "custom/logo",
+    "niri/workspaces",
+    "cpu",
+    "memory",
+    "disk",
+    "niri/window"
+  ],
+  "modules-center": [
+    "clock"
+  ],
+  "modules-right": [
+    "custom/rec",
+    "custom/hotspot",
+    "tray",
+    "power-profiles-daemon",
+    "pulseaudio",
+    "backlight",
+    "network",
+    "battery",
+    "custom/notification",
+    "custom/control"
+  ],
+  "custom/logo": {
+    "format": "",
+    "tooltip": false,
+    "on-click": "~/.local/bin/fr-toggle radial-launcher"
+  },
+  "niri/workspaces": {
+    "format": "",
+    "on-click": "activate"
+  },
+  "niri/window": {
+    "format": "{title}",
+    "max-length": 40,
+    "separate-outputs": true
+  },
+  "clock": {
+    "format": "{:%a %d %b  %H:%M}",
+    "tooltip-format": "Klik untuk kalender & cuaca",
+    "calendar": {
+      "mode": "month",
+      "format": {
+        "today": "<span color='#6EA8FE'><b>{}</b></span>"
+      }
+    },
+    "interval": 60,
+    "on-click": "~/.local/bin/fr-toggle fr-control calendar"
+  },
+  "tray": {
+    "icon-size": 14,
+    "spacing": 8
+  },
+  "pulseaudio": {
+    "format": "{icon} {volume}%",
+    "format-muted": "󰝟 mute",
+    "format-icons": {
+      "default": [
+        "󰕿",
+        "󰖀",
+        "󰕾"
+      ]
+    },
+    "on-click": "~/.local/bin/fr-toggle fr-control volume",
+    "scroll-step": 5,
+    "on-click-right": "pavucontrol",
+    "on-click-middle": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"
+  },
+  "backlight": {
+    "format": "{icon} {percent}%",
+    "format-icons": [
+      "󰃞",
+      "󰃟",
+      "󰃠"
+    ],
+    "on-scroll-up": "brightnessctl s +5%",
+    "on-scroll-down": "brightnessctl s 5%-",
+    "on-click": "~/.local/bin/fr-toggle fr-control brightness"
+  },
+  "network": {
+    "format-wifi": "{icon}",
+    "format-icons": [
+      "󰤟",
+      "󰤢",
+      "󰤥",
+      "󰤨"
+    ],
+    "format-ethernet": "󰈀",
+    "format-disconnected": "󰤮",
+    "tooltip-format-wifi": "{essid}  {signalStrength}%\n{ipaddr}",
+    "tooltip-format-ethernet": "{ifname}  {ipaddr}",
+    "on-click": "~/.local/bin/fr-toggle fr-control wifi",
+    "on-click-right": "nm-connection-editor"
+  },
+  "battery": {
+    "states": {
+      "warning": 30,
+      "critical": 15
+    },
+    "format": "{icon} {capacity}%",
+    "format-charging": "󰂄 {capacity}%",
+    "format-icons": [
+      "󰁺",
+      "󰁻",
+      "󰁼",
+      "󰁽",
+      "󰁾",
+      "󰁿",
+      "󰂀",
+      "󰂁",
+      "󰂂",
+      "󰁹"
+    ],
+    "on-click": "~/.local/bin/fr-toggle fr-control battery",
+    "tooltip-format": "{capacity}% · {timeTo}",
+    "format-time": "{H} jam {M} menit"
+  },
+  "custom/notification": {
+    "tooltip": false,
+    "format": "{icon}",
+    "return-type": "json",
+    "escape": true,
+    "format-icons": {
+      "notification": "󰂚<span foreground='#F27A7A'><sup></sup></span>",
+      "none": "󰂚",
+      "dnd-notification": "󰂛",
+      "dnd-none": "󰂛",
+      "inhibited-notification": "󰂚",
+      "inhibited-none": "󰂚",
+      "dnd-inhibited-notification": "󰂛",
+      "dnd-inhibited-none": "󰂛"
+    },
+    "exec-if": "which swaync-client",
+    "exec": "swaync-client -swb",
+    "on-click": "swaync-client -t -sw",
+    "on-click-right": "swaync-client -d -sw"
+  },
+  "power-profiles-daemon": {
+    "format": "{icon}",
+    "tooltip-format": "Mode daya: {profile}",
+    "format-icons": {
+      "default": "󰗑",
+      "performance": "󰓅",
+      "balanced": "󰗑",
+      "power-saver": "󰌪"
+    }
+  },
+  "custom/control": {
+    "format": "󰒓",
+    "tooltip-format": "Kontrol: Wi-Fi, daya, wallpaper",
+    "on-click": "~/.local/bin/fr-toggle fr-control"
+  },
+  "cpu": {
+    "interval": 5,
+    "format": "󰻠 {usage}%",
+    "tooltip-format": "CPU {usage}%  ·  load {load}",
+    "states": {
+      "warning": 70,
+      "critical": 90
+    },
+    "on-click": "~/.local/bin/fr-toggle fr-sysmon",
+    "on-click-right": "alacritty -e btop"
+  },
+  "memory": {
+    "interval": 10,
+    "format": "󰍛 {percentage}%",
+    "tooltip-format": "RAM  {used:0.1f} / {total:0.1f} GiB\nSwap {swapUsed:0.1f} / {swapTotal:0.1f} GiB",
+    "states": {
+      "warning": 75,
+      "critical": 90
+    },
+    "on-click": "~/.local/bin/fr-toggle fr-sysmon",
+    "on-click-right": "alacritty -e btop"
+  },
+  "disk": {
+    "interval": 120,
+    "path": "/",
+    "format": "󰋊 {percentage_used}%",
+    "tooltip-format": "Disk /  {used} / {total}  (sisa {free})",
+    "states": {
+      "warning": 80,
+      "critical": 92
+    },
+    "on-click": "~/.local/bin/fr-toggle fr-sysmon",
+    "on-click-right": "alacritty -e btop"
+  },
+  "custom/hotspot": {
+    "exec": "~/.local/bin/fr-hotspot-bar",
+    "return-type": "json",
+    "interval": 15,
+    "signal": 10,
+    "on-click": "~/.local/bin/fr-toggle fr-control wifi",
+    "tooltip": true
+  },
+  "custom/rec": {
+    "exec": "~/.local/bin/fr-rec status",
+    "return-type": "json",
+    "interval": "once",
+    "signal": 9,
+    "on-click": "~/.local/bin/fr-rec toggle",
+    "tooltip": true
+  }
+}

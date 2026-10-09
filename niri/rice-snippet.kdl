@@ -1,0 +1,46 @@
+// FR Navy — potongan config niri
+// JANGAN di-include mentah-mentah: niri error kalau ada blok/bind duplikat.
+// Gabungkan tiap bagian di bawah ke blok yang sama di ~/.config/niri/config.kdl.
+
+// ── 1. Ganti isi blok `layout` kamu ──────────────────────────
+layout {
+    gaps 10
+    center-focused-column "never"
+
+    focus-ring {
+        width 2
+        active-color "#6EA8FE"
+        inactive-color "#24304A"
+    }
+
+    border {
+        off
+    }
+
+    shadow {
+        on
+        softness 24
+        spread 2
+        offset x=0 y=6
+        color "#0000005a"
+    }
+}
+
+// ── 2. Sudut membulat semua window (taruh di level teratas) ──
+window-rule {
+    geometry-corner-radius 12
+    clip-to-geometry true
+}
+
+
+// ── 3. Autostart (hapus spawn bar/notif lama + noctalia) ─────
+spawn-at-startup "waybar"
+spawn-at-startup "swaync"
+spawn-at-startup "hypridle"
+// wallpaper: tetap pakai awww-daemon + awww img yang sudah ada di config kamu
+
+// ── 4. Tambahkan ke blok `binds` yang sudah ada ──────────────
+// (cek dulu kombinasi tombolnya belum dipakai)
+//  Mod+D        { spawn "fuzzel"; }
+//  Mod+N        { spawn "swaync-client" "-t" "-sw"; }
+//  Super+Alt+L  { spawn "loginctl" "lock-session"; }

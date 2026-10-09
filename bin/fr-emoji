@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# fr-emoji — pilih emoji lewat fuzzel (cari pakai nama Inggris atau kata Indonesia,
+# mis. "kopi", "ngakak", "jempol"). Emoji disalin ke clipboard, dan langsung diketik
+# ke jendela aktif kalau wtype terpasang. Yang terakhir dipakai muncul paling atas.
+set -u
+LIST="${XDG_DATA_HOME:-$HOME/.local/share}/fr-emoji/emoji.txt"
+RECENT="${XDG_CACHE_HOME:-$HOME/.cache}/fr-emoji-recent"
+[ -s "$LIST" ] || { notify-send -a Emoji "Daftar emoji tidak ada" "Jalankan ./update.sh"; exit 1; }
+touch "$RECENT"
+
+# terakhir dipakai dulu, lalu sisanya (tanpa duplikat)
+sel=$( { cat "$RECENT"; cat "$LIST"; } | awk '!seen[$0]++' |
+       fuzzel --dmenu --prompt "󰞅  " --placeholder "Cari emoji… (kopi, ngakak, heart)" --width 40 --lines 9 2>/dev/null) || exit 0
+[ -n "$sel" ] || exit 0
+e=${sel%% *}
+
+printf '%s' "$e" | wl-copy
+{ printf '%s\n' "$sel"; grep -vxF -- "$sel" "$RECENT"; } | head -24 > "$RECENT.tmp" && mv "$RECENT.tmp" "$RECENT"
+if command -v wtype >/dev/null; then
+    sleep 0.15; wtype -- "$e" 2>/dev/null || true   # tunggu fuzzel tertutup & fokus kembali
+fi

@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# fr-media — info media yang sedang diputar (MPRIS: Spotify, Feishin, YouTube/Netflix
+# di browser, mpv, VLC, …) untuk lockscreen. Kosong kalau tidak ada yang diputar.
+#
+#   fr-media title      judul (markup Pango, sudah di-escape)
+#   fr-media sub        "artis · sumber"
+#   fr-media progress   "1:23 ━━━━━───── 3:45"
+#   fr-media playicon   ikon ⏯ sesuai status
+#   fr-media previcon / nexticon
+#   fr-media art        path cover (gambar transparan kalau tidak ada)
+#   fr-media toggle | next | prev
+set -u
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/fr-media"
+mkdir -p "$CACHE"
+NONE="$CACHE/none.png"
+# PNG 1×1 transparan, supaya hyprlock membersihkan cover lama
+[ -s "$NONE" ] || printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABXvMqGgAAAABJRU5ErkJggg==' | base64 -d > "$NONE"
+
+command -v playerctl >/dev/null || { [ "${1:-}" = art ] && echo "$NONE"; exit 0; }
+
+# pilih pemutar: yang sedang Playing dulu, lalu yang Paused
+pick() {
+    local p st paused=""
+    while read -r p; do
+        [ -n "$p" ] || continue
+        st=$(playerctl -p "$p" status 2>/dev/null)
+        [ "$st" = Playing ] && { echo "$p"; return; }
+        [ "$st" = Paused ] && [ -z "$paused" ] && paused=$p
+    done < <(playerctl -l 2>/dev/null)
+    [ -n "$paused" ] && echo "$paused"
+}
+P=$(pick)
+meta() { playerctl -p "$P" metadata "$1" 2>/dev/null; }
+esc() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
+mmss() { local s=${1%.*}; [ -n "$s" ] || s=0; printf '%d:%02d' $((s / 60)) $((s % 60)); }
+
+source_name() {
+    local url
+    url=$(meta xesam:url)
+    case "$url" in
+        *music.youtube.com*) echo "YouTube Music"; return ;;
+        *youtube.com*|*youtu.be*) echo YouTube; return ;;
+        *netflix.com*) echo Netflix; return ;;
+        *primevideo*) echo "Prime Video"; return ;;
+        *disneyplus*|*hotstar*) echo "Disney+"; return ;;
+        *soundcloud*) echo SoundCloud; return ;;
+    esac
+    case "${P%%.*}" in
+        spotify) echo Spotify ;; feishin|Feishin) echo Feishin ;; mpv) echo mpv ;; vlc) echo VLC ;;
+        firefox|zen|chromium|brave|google-chrome) echo Browser ;;
+        *) echo "${P%%.*}" ;;
+    esac
+}
+
+case "${1:-}" in
+title)
+    [ -n "$P" ] || exit 0
+    meta xesam:title | head -1 | cut -c1-48 | esc ;;
+sub)
+    [ -n "$P" ] || exit 0
+    a=$(meta xesam:artist | head -1 | cut -c1-32 | esc)
+    s=$(source_name | esc)
+    if [ -n "$a" ]; then echo "$a  ·  $s"; else echo "$s"; fi ;;
+progress)
+    [ -n "$P" ] || exit 0
+    len=$(meta mpris:length); pos=$(playerctl -p "$P" position 2>/dev/null)
+    pos=${pos%.*}; [ -n "$pos" ] || pos=0
+    if [ -n "$len" ] && [ "$len" -gt 0 ] 2>/dev/null; then
+        tot=$((len / 1000000)); n=18; f=$(( pos * n / (tot > 0 ? tot : 1) )); [ $f -gt $n ] && f=$n
+        bar=""; rest=""
+        for ((i = 0; i < n; i++)); do if [ $i -lt $f ]; then bar+="━"; else rest+="─"; fi; done
+        echo "<span fgalpha='65%'>$(mmss "$pos")</span>  $bar<span fgalpha='25%'>$rest</span>  <span fgalpha='65%'>$(mmss "$tot")</span>"
+    else
+        echo "<span fgalpha='65%'>$(mmss "$pos")  ·  live</span>"
+    fi ;;
+playicon)
+    [ -n "$P" ] || exit 0
+    [ "$(playerctl -p "$P" status 2>/dev/null)" = Playing ] && echo "󰏤" || echo "󰐊" ;;
+previcon) [ -n "$P" ] && echo "󰒮" ;;
+nexticon) [ -n "$P" ] && echo "󰒭" ;;
+art)
+    [ -n "$P" ] || { echo "$NONE"; exit 0; }
+    url=$(meta mpris:artUrl)
+    [ -n "$url" ] || { echo "$NONE"; exit 0; }
+    key=$(printf '%s' "$url" | md5sum | cut -c1-16)
+    out="$CACHE/$key.png"
+    if [ ! -s "$out" ]; then
+        case "$url" in
+            file://*) src=$(printf '%b' "${url#file://}" | sed 's/%20/ /g') ;;
+            http*://*) src="$CACHE/$key.dl"; curl -fsSL --max-time 4 -o "$src" "$url" 2>/dev/null || { echo "$NONE"; exit 0; } ;;
+            *) echo "$NONE"; exit 0 ;;
+        esac
+        [ -s "$src" ] || { echo "$NONE"; exit 0; }
+        im=$(command -v magick || command -v convert)
+        if [ -n "$im" ]; then
+            "$im" "$src[0]" -thumbnail 256x256^ -gravity center -extent 256x256 "PNG32:$out" 2>/dev/null || cp "$src" "$out"
+        else
+            cp "$src" "$out"
+        fi
+        rm -f "$CACHE/$key.dl"
+        # simpan 40 cover terakhir saja
+        ls -t "$CACHE"/*.png 2>/dev/null | grep -v '/none.png$' | tail -n +41 | xargs -r rm -f
+    fi
+    echo "$out" ;;
+toggle) [ -n "$P" ] && playerctl -p "$P" play-pause ;;
+next)   [ -n "$P" ] && playerctl -p "$P" next ;;
+prev)   [ -n "$P" ] && playerctl -p "$P" previous ;;
+*) sed -n '2,12p' "$0"; exit 1 ;;
+esac

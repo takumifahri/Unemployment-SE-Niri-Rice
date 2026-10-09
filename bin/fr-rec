@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# fr-rec — rekam layar (monitor yang sedang fokus) + audio desktop.
+#   fr-rec toggle   mulai / berhenti & simpan
+#   fr-rec status   JSON untuk waybar (kosong kalau tidak merekam)
+#
+# Capture lewat KMS (gpu-screen-recorder -w <monitor>), BUKAN portal screencast,
+# jadi tidak berebut dengan share screen Zoom/Meet dan tidak memunculkan dialog.
+# Encode di GPU (VAAPI) → CPU hampir tidak terpakai.
+# Mic ikut direkam kalau FR_REC_MIC=1.  Hasil: ~/Videos/Rekaman/
+set -u
+RUN="${XDG_RUNTIME_DIR:-/tmp}"
+PIDF="$RUN/fr-rec.pid"; FILEF="$RUN/fr-rec.file"; T0F="$RUN/fr-rec.start"
+DIR="$HOME/Videos/Rekaman"
+
+running() { [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null; }
+bar() { pkill -RTMIN+9 -x waybar 2>/dev/null; true; }
+notify() { command -v notify-send >/dev/null && notify-send -a "Rekam layar" "$@"; }
+
+focused_output() {
+    niri msg -j focused-output 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["name"])' 2>/dev/null
+}
+
+start() {
+    mkdir -p "$DIR"
+    local out file audio
+    out=$(focused_output); file="$DIR/$(date +%Y-%m-%d_%H-%M-%S).mp4"
+    audio="default_output"; [ "${FR_REC_MIC:-0}" = 1 ] && audio="default_output|default_input"
+    # job control aktif: tanpa ini proses latar belakang mengabaikan SIGINT,
+    # padahal SIGINT itulah sinyal "berhenti & simpan file"
+    set -m
+    if command -v gpu-screen-recorder >/dev/null; then
+        gpu-screen-recorder -w "${out:-screen}" -f 60 -a "$audio" -o "$file" >/dev/null 2>"$RUN/fr-rec.log" &
+    elif command -v wf-recorder >/dev/null; then
+        # cadangan: wf-recorder + encoder VAAPI di GPU
+        local mon=""; command -v pactl >/dev/null && mon="$(pactl get-default-sink).monitor"
+        wf-recorder ${out:+-o "$out"} -c h264_vaapi -d /dev/dri/renderD128 \
+            ${mon:+--audio="$mon"} -f "$file" >/dev/null 2>"$RUN/fr-rec.log" &
+    else
+        notify "Perekam belum terpasang" "Install gpu-screen-recorder (AUR) atau wf-recorder"; exit 1
+    fi
+    echo $! > "$PIDF"; echo "$file" > "$FILEF"; date +%s > "$T0F"
+    set +m
+    sleep 0.6
+    if ! running; then
+        notify "Gagal merekam" "$(tail -2 "$RUN/fr-rec.log")"; rm -f "$PIDF"; bar; exit 1
+    fi
+    notify "Merekam ${out:-layar}" "Tekan lagi untuk berhenti"
+    bar
+}
+
+stop() {
+    local pid file
+    pid=$(cat "$PIDF"); file=$(cat "$FILEF" 2>/dev/null)
+    kill -INT "$pid" 2>/dev/null
+    for _ in $(seq 50); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done   # tunggu file selesai ditulis
+    rm -f "$PIDF" "$T0F"
+    bar
+    notify "Rekaman disimpan" "${file/#$HOME/\~}"
+}
+
+case "${1:-toggle}" in
+toggle) if running; then stop; else rm -f "$PIDF"; start; fi ;;
+start)  running || start ;;
+stop)   running && stop ;;
+status)
+    if running; then
+        s=$(( $(date +%s) - $(cat "$T0F" 2>/dev/null || date +%s) ))
+        printf '{"text":"󰑋 REC","tooltip":"Merekam sejak %02d:%02d — klik untuk berhenti","class":"recording"}\n' $((s / 60)) $((s % 60))
+    else
+        echo '{"text":""}'
+    fi ;;
+*) sed -n '2,10p' "$0"; exit 1 ;;
+esac

@@ -1,0 +1,121 @@
+{
+  "navy": {
+    "name": "Navy",
+    "desc": "Biru dongker khas FR",
+    "colors": {
+      "bg": "#0B0F17",
+      "surface": "#121826",
+      "surface2": "#1A2233",
+      "border": "#24304A",
+      "text": "#E6EAF2",
+      "muted": "#8A96AD",
+      "accent": "#6EA8FE",
+      "accent2": "#7FD1B9",
+      "accent3": "#B49CFF",
+      "warn": "#F2C46D",
+      "urgent": "#F27A7A"
+    }
+  },
+  "ungu": {
+    "name": "Ungu",
+    "desc": "Violet lembut",
+    "colors": {
+      "bg": "#100C1A",
+      "surface": "#181326",
+      "surface2": "#221B35",
+      "border": "#342A4F",
+      "text": "#EAE6F5",
+      "muted": "#9A90B5",
+      "accent": "#B49CFF",
+      "accent2": "#F5A3C7",
+      "accent3": "#7FD1B9",
+      "warn": "#F2C46D",
+      "urgent": "#F27A7A"
+    }
+  },
+  "sakura": {
+    "name": "Sakura",
+    "desc": "Pink hangat",
+    "colors": {
+      "bg": "#160E13",
+      "surface": "#20141B",
+      "surface2": "#2B1C25",
+      "border": "#422B38",
+      "text": "#F3E6EC",
+      "muted": "#A8909C",
+      "accent": "#F5A3C7",
+      "accent2": "#FFD3A5",
+      "accent3": "#B49CFF",
+      "warn": "#F2C46D",
+      "urgent": "#F27A7A"
+    }
+  },
+  "kopi": {
+    "name": "Kopi",
+    "desc": "Cokelat & karamel",
+    "colors": {
+      "bg": "#14100C",
+      "surface": "#1D1712",
+      "surface2": "#28201A",
+      "border": "#3D3127",
+      "text": "#F1E9DF",
+      "muted": "#A39484",
+      "accent": "#E8B06A",
+      "accent2": "#A8C686",
+      "accent3": "#E89A7A",
+      "warn": "#F2C46D",
+      "urgent": "#F27A7A"
+    }
+  },
+  "hutan": {
+    "name": "Hutan",
+    "desc": "Hijau daun",
+    "colors": {
+      "bg": "#0B1310",
+      "surface": "#111C17",
+      "surface2": "#182720",
+      "border": "#263D32",
+      "text": "#E4EFE8",
+      "muted": "#8CA597",
+      "accent": "#7FD1A0",
+      "accent2": "#E6D57A",
+      "accent3": "#6EC3D8",
+      "warn": "#F2C46D",
+      "urgent": "#F27A7A"
+    }
+  },
+  "laut": {
+    "name": "Laut",
+    "desc": "Biru kehijauan",
+    "colors": {
+      "bg": "#091216",
+      "surface": "#0F1B21",
+      "surface2": "#16262E",
+      "border": "#223A45",
+      "text": "#E2EEF1",
+      "muted": "#86A1AB",
+      "accent": "#5CCFE6",
+      "accent2": "#FFB38A",
+      "accent3": "#9DB4FF",
+      "warn": "#F2C46D",
+      "urgent": "#F27A7A"
+    }
+  },
+  "grafit": {
+    "name": "Grafit",
+    "desc": "Monokrom tenang",
+    "colors": {
+      "bg": "#0E0F11",
+      "surface": "#17181B",
+      "surface2": "#202226",
+      "border": "#33363C",
+      "text": "#ECEDEF",
+      "muted": "#9A9EA6",
+      "accent": "#E8EAED",
+      "accent2": "#B7BDC6",
+      "accent3": "#8FA3B8",
+      "warn": "#F2C46D",
+      "urgent": "#F27A7A"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+# FR Navy — satty (editor anotasi screenshot). Warna ikut fr-theme.
+[general]
+floating-hack = true
+early-exit = true
+initial-tool = "arrow"
+copy-command = "wl-copy"
+annotation-size-factor = 1.5
+corner-roundness = 10
+output-filename = "~/Pictures/Screenshots/%Y-%m-%d_%H-%M-%S.png"
+save-after-copy = true
+actions-on-enter = ["save-to-clipboard"]
+actions-on-escape = ["exit"]
+default-round-caps = true
+primary-highlighter = "block"
+
+[font]
+family = "Inter"
+style = "SemiBold"
+fallback = ["Noto Sans CJK JP"]
+
+[color-palette]
+# aksen tema, sekunder, tersier, peringatan, merah, putih
+palette = ["#6EA8FE", "#7FD1B9", "#B49CFF", "#F2C46D", "#F27A7A", "#E6EAF2"]

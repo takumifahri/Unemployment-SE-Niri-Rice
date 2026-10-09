@@ -1,0 +1,117 @@
+#!/bin/sh
+# fr-hotspot-iface — helper root untuk fr-hotspot (dipasang ke /usr/local/bin oleh update.sh,
+# boleh dijalankan tanpa password lewat /etc/sudoers.d/fr-hotspot). Hanya bisa dua hal:
+#
+#   fr-hotspot-iface start <iface-wifi> <kanal> <ssid-hex>   (password dibaca dari stdin)
+#   fr-hotspot-iface stop
+#
+# start: buat antarmuka AP virtual "frap0" di kartu yang sama, jalankan hostapd (WPA2) dan
+# dnsmasq (DHCP + DNS) di 10.42.0.0/24, lalu NAT ke koneksi internet mana pun (nftables).
+# Tidak lewat NetworkManager, jadi jalan dengan backend iwd maupun wpa_supplicant.
+# stop: matikan semuanya dan kembalikan ip_forward seperti semula.
+set -eu
+PATH=/usr/bin:/usr/sbin:/bin:/sbin
+umask 022
+AP=frap0
+RUN=/run/fr-hotspot
+NET=10.42.0
+
+fail() { echo "$*" >&2; stop_all; exit 1; }
+
+stop_all() {
+    for p in hostapd dnsmasq; do
+        [ -f "$RUN/$p.pid" ] && kill "$(cat "$RUN/$p.pid")" 2>/dev/null || true
+    done
+    nft delete table inet fr_hotspot 2>/dev/null || true
+    [ -f "$RUN/ip_forward" ] && cat "$RUN/ip_forward" > /proc/sys/net/ipv4/ip_forward 2>/dev/null || true
+    [ -e "/sys/class/net/$AP" ] && iw dev "$AP" del 2>/dev/null || true
+    rm -rf "$RUN"
+}
+
+case "${1:-}" in
+start)
+    parent=${2:-}; chan=${3:-}; ssidhex=${4:-}
+    case "$parent" in ''|*[!a-z0-9]*) echo "nama antarmuka tidak valid" >&2; exit 1 ;; esac
+    [ -e "/sys/class/net/$parent/phy80211" ] || { echo "$parent bukan kartu Wi-Fi" >&2; exit 1; }
+    case "$chan" in ''|*[!0-9]*) echo "kanal tidak valid" >&2; exit 1 ;; esac
+    [ "$chan" -ge 1 ] && [ "$chan" -le 177 ] || { echo "kanal tidak valid" >&2; exit 1; }
+    case "$ssidhex" in ''|*[!0-9a-f]*) echo "SSID tidak valid" >&2; exit 1 ;; esac
+    n=${#ssidhex}
+    [ $((n % 2)) -eq 0 ] && [ "$n" -le 64 ] || { echo "SSID tidak valid" >&2; exit 1; }
+    IFS= read -r pass || true
+    case "$pass" in *[![:print:]]*) echo "password berisi karakter tidak valid" >&2; exit 1 ;; esac
+    [ ${#pass} -ge 8 ] && [ ${#pass} -le 63 ] || { echo "password harus 8–63 karakter" >&2; exit 1; }
+    command -v hostapd >/dev/null || { echo "hostapd belum terpasang (sudo pacman -S hostapd)" >&2; exit 1; }
+    command -v dnsmasq >/dev/null || { echo "dnsmasq belum terpasang (sudo pacman -S dnsmasq)" >&2; exit 1; }
+    command -v nft >/dev/null || { echo "nftables belum terpasang (sudo pacman -S nftables)" >&2; exit 1; }
+
+    stop_all                       # sisa sesi sebelumnya
+    mkdir -m 755 "$RUN"
+
+    # antarmuka AP; MAC = MAC kartu dengan oktet terakhir +1 (seperti create_ap)
+    mac=$(cat "/sys/class/net/$parent/address")
+    last=$(printf '%d' "0x${mac##*:}")
+    new="${mac%:*}:$(printf '%02x' $(( (last + 1) % 256 )))"
+    iw dev "$parent" interface add "$AP" type __ap || fail "kartu menolak membuat antarmuka hotspot"
+    ip link set dev "$AP" address "$new" 2>/dev/null || true
+    nmcli device set "$AP" managed no >/dev/null 2>&1 || true
+
+    if [ "$chan" -gt 14 ]; then hw=a; extra="ieee80211ac=1"; else hw=g; extra=""; fi
+    (umask 077; cat > "$RUN/hostapd.conf" <<EOF
+interface=$AP
+driver=nl80211
+ssid2=$ssidhex
+utf8_ssid=1
+hw_mode=$hw
+channel=$chan
+ieee80211n=1
+$extra
+wmm_enabled=1
+auth_algs=1
+wpa=2
+wpa_key_mgmt=WPA-PSK
+rsn_pairwise=CCMP
+wpa_passphrase=$pass
+EOF
+)
+    ip addr add "$NET.1/24" dev "$AP"
+    if ! hostapd -B -P "$RUN/hostapd.pid" "$RUN/hostapd.conf" < /dev/null > "$RUN/hostapd.log" 2>&1; then
+        msg=$(grep -iE 'fail|could not|error|invalid' "$RUN/hostapd.log" | tail -1)
+        fail "hostapd gagal: ${msg:-lihat log hostapd}"
+    fi
+
+    touch "$RUN/leases"; chmod 644 "$RUN/leases"
+    dnsmasq --conf-file=/dev/null --interface="$AP" --bind-interfaces --except-interface=lo \
+        --listen-address="$NET.1" --dhcp-range="$NET.10,$NET.250,12h" --dhcp-authoritative \
+        --dhcp-option=option:router,"$NET.1" --dhcp-option=option:dns-server,"$NET.1" \
+        --dhcp-leasefile="$RUN/leases" --pid-file="$RUN/dnsmasq.pid" \
+        < /dev/null > "$RUN/dnsmasq.log" 2>&1 \
+        || fail "dnsmasq gagal: $(tail -1 "$RUN/dnsmasq.log")"
+
+    # UFW (iptables) membuang DHCP/DNS dan forward secara default: izinkan khusus frap0.
+    # Aturan ini permanen tapi aman — frap0 hanya ada saat hotspot menyala.
+    if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+        ufw allow in on "$AP" comment fr-hotspot >/dev/null 2>&1 || true
+        ufw route allow in on "$AP" comment fr-hotspot >/dev/null 2>&1 || true
+    fi
+
+    cat /proc/sys/net/ipv4/ip_forward > "$RUN/ip_forward"
+    echo 1 > /proc/sys/net/ipv4/ip_forward
+    nft -f - <<EOF || fail "aturan NAT (nftables) gagal dipasang"
+table inet fr_hotspot {
+    chain forward {
+        type filter hook forward priority filter - 10; policy accept;
+        iifname "$AP" accept
+        oifname "$AP" ct state established,related accept
+    }
+    chain postrouting {
+        type nat hook postrouting priority srcnat; policy accept;
+        ip saddr $NET.0/24 oifname != "$AP" masquerade
+    }
+}
+EOF
+    ;;
+stop)
+    stop_all ;;
+*) echo "pakai: start <iface> <kanal> <ssid-hex> (password di stdin) | stop" >&2; exit 1 ;;
+esac

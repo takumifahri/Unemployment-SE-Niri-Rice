@@ -1,0 +1,396 @@
+#!/usr/bin/env python3
+"""fr-wifiqr — sambung / bagikan Wi-Fi lewat QR (format standar Android & iOS).
+
+  fr-wifiqr image [file]   buka gambar di layar pilih area: QR yang terdeteksi sudah ditandai,
+                           tarik kotak baru kalau mau area lain, Enter = sambung.
+                           Tanpa file: pakai gambar di clipboard (mis. "Salin gambar" di chat),
+                           kalau kosong muncul dialog pilih file. --auto = langsung tanpa layar pilih
+  fr-wifiqr screen         pilih area layar yang berisi QR
+  fr-wifiqr cam            arahkan QR ke webcam (Esc / 60 detik = batal)
+  fr-wifiqr share [--term] [--conn NAMA]  buat QR jaringan yang sedang tersambung (atau koneksi NAMA)
+                           (--term: cetak di terminal; tanpa itu: PNG, path dicetak sebagai JSON)
+
+QR non-Wi-Fi (link, teks) tidak diabaikan: isinya disalin ke clipboard.
+Pembaca QR: ZXingReader (paket zxing-cpp; bisa baca QR bergaya Samsung: titik bulat + logo),
+cadangan zbar. Butuh juga: networkmanager, qrencode, imagemagick (crop area),
+wl-clipboard, grim, slurp.
+"""
+import json, os, re, shutil, subprocess, sys, tempfile
+
+RUN = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+APP = "Wi-Fi QR"
+
+
+# ── util ────────────────────────────────────────────────────────────
+def notify(title, body="", icon="network-wireless"):
+    if shutil.which("notify-send"):
+        subprocess.run(["notify-send", "-a", APP, "-i", icon, title, body],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(f"{title}{': ' + body if body else ''}", file=sys.stderr)
+
+
+def need(*cmds):
+    missing = [c for c in cmds if not shutil.which(c)]
+    if missing:
+        pkg = {"zbarimg": "zbar", "zbarcam": "zbar", "qrencode": "qrencode", "wl-paste": "wl-clipboard",
+               "wl-copy": "wl-clipboard", "grim": "grim", "slurp": "slurp", "nmcli": "networkmanager"}
+        notify("Program belum terpasang", "sudo pacman -S " + " ".join(sorted({pkg.get(m, m) for m in missing})))
+        sys.exit(1)
+
+
+def private_tmp(suffix):
+    fd, path = tempfile.mkstemp(prefix="fr-wifiqr-", suffix=suffix, dir=RUN)   # mode 600
+    os.close(fd)
+    return path
+
+
+# ── format WIFI:  (WIFI:T:WPA;S:nama;P:sandi;H:false;;) ─────────────
+def split_unescaped(s, sep):
+    out, cur, esc = [], "", False
+    for ch in s:
+        if esc:
+            cur += "\\" + ch; esc = False
+        elif ch == "\\":
+            esc = True
+        elif ch == sep:
+            out.append(cur); cur = ""
+        else:
+            cur += ch
+    out.append(cur)
+    return out
+
+
+def unescape(s):
+    return re.sub(r"\\(.)", r"\1", s)
+
+
+def escape(s):
+    return re.sub(r'([\\;,:"])', r"\\\1", s)
+
+
+def parse_wifi(text):
+    if not text[:5].upper() == "WIFI:":
+        return None
+    info = {}
+    for part in split_unescaped(text[5:], ";"):
+        if ":" not in part:
+            continue
+        key, val = part.split(":", 1)
+        info[key.strip().upper()] = unescape(val)
+    if not info.get("S"):
+        return None
+    return {
+        "ssid": info["S"],
+        "type": (info.get("T") or "nopass").upper(),
+        "password": info.get("P", ""),
+        "hidden": info.get("H", "").lower() == "true",
+    }
+
+
+def build_wifi(ssid, typ, password, hidden):
+    s = f"WIFI:T:{typ};S:{escape(ssid)};"
+    if typ != "nopass" and password:
+        s += f"P:{escape(password)};"
+    if hidden:
+        s += "H:true;"
+    return s + ";"
+
+
+# ── sambung ─────────────────────────────────────────────────────────
+def connect(w):
+    need("nmcli")
+    subprocess.run(["nmcli", "radio", "wifi", "on"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    cmd = ["nmcli", "device", "wifi", "connect", w["ssid"]]
+    if w["type"] != "NOPASS" and w["password"]:
+        cmd += ["password", w["password"]]
+    if w["hidden"]:
+        cmd += ["hidden", "yes"]
+    notify("Menghubungkan…", w["ssid"])
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    if r.returncode == 0:
+        notify("Wi-Fi tersambung", w["ssid"], "network-wireless-signal-excellent")
+        return 0
+    err = (r.stderr or r.stdout).strip().splitlines()
+    msg = err[-1] if err else "gagal"
+    msg = re.sub(r"^Error:\s*", "", msg)
+    if re.search(r"secret|password|802-1x", msg, re.I):
+        msg = "Password di QR tidak cocok"
+    elif re.search(r"No network with SSID", msg, re.I):
+        msg = "Jaringan tidak ditemukan di sekitar sini"
+    notify(f"Gagal tersambung ke {w['ssid']}", msg, "network-wireless-disconnected")
+    return 1
+
+
+def handle(codes, source):
+    codes = [c for c in codes if c.strip()]
+    if not codes:
+        notify("QR tidak ditemukan", f"Tidak ada QR yang terbaca dari {source}", "dialog-warning")
+        return 1
+    for c in codes:
+        w = parse_wifi(c.strip())
+        if w:
+            return connect(w)
+    # bukan QR Wi-Fi: salin isinya supaya tetap berguna
+    text = codes[0].strip()
+    if shutil.which("wl-copy"):
+        subprocess.run(["wl-copy"], input=text, text=True)
+    notify("QR ini bukan Wi-Fi — isinya disalin", text[:120], "edit-copy")
+    return 0
+
+
+# ── sumber QR ───────────────────────────────────────────────────────
+IM = shutil.which("magick") or shutil.which("convert")
+
+
+def _zxing(path, extra=()):
+    r = subprocess.run(["ZXingReader", *extra, path], capture_output=True, text=True)
+    codes, cur = [], None
+    for line in r.stdout.splitlines():
+        key, _, val = line.partition(":")
+        val = val.strip()
+        if key == "Text":
+            cur = {"text": "", "quad": None}; codes.append(cur)
+        elif cur is not None and key == "Bytes":
+            # pakai hex, bukan baris Text: aman untuk kutip, titik koma, emoji, dsb.
+            cur["text"] = bytes.fromhex(val.replace(" ", "")).decode("utf-8", "replace")
+        elif cur is not None and key == "Position":
+            try:
+                cur["quad"] = [tuple(int(n) for n in p.split("x")) for p in val.split()]
+            except ValueError:
+                pass
+    return codes
+
+
+def decode(path, rect=None):
+    """Baca semua QR di gambar (atau di dalam rect=(x,y,w,h) piksel gambar).
+    Hasil: [{"text", "quad"}], quad dalam koordinat gambar asli (None kalau tidak tahu)."""
+    src, tmp, ox, oy, scale = path, None, 0, 0, 1
+    if rect and IM:
+        x, y, w, h = (max(0, int(round(v))) for v in rect)
+        scale = 3 if max(w, h) < 300 else 2 if max(w, h) < 700 else 1   # QR kecil diperbesar
+        tmp = private_tmp(".png")
+        subprocess.run([IM, path + "[0]", "-crop", f"{w}x{h}+{x}+{y}", "+repage",
+                        "-filter", "point", "-resize", f"{scale * 100}%", tmp], check=False)
+        src, ox, oy = tmp, x, y
+    try:
+        if shutil.which("ZXingReader"):
+            codes = _zxing(src) or _zxing(src, ["-denoise"])
+        elif shutil.which("zbarimg"):
+            r = subprocess.run(["zbarimg", "--raw", "-q", src], capture_output=True, text=True)
+            codes = [{"text": t, "quad": None} for t in r.stdout.splitlines() if t.strip()]
+        else:
+            need("ZXingReader")
+            codes = []
+    finally:
+        if tmp:
+            os.unlink(tmp)
+    for c in codes:
+        if c["quad"]:
+            c["quad"] = [(ox + px / scale, oy + py / scale) for px, py in c["quad"]]
+    return codes
+
+
+def summarize(codes):
+    """Versi aman untuk UI: tanpa password."""
+    out = []
+    for c in codes:
+        w = parse_wifi(c["text"].strip())
+        item = {"wifi": bool(w)}
+        if w:
+            item.update(ssid=w["ssid"], type=w["type"], hidden=w["hidden"])
+        else:
+            item["text"] = c["text"].strip()[:200]
+        if c["quad"]:
+            xs, ys = [p[0] for p in c["quad"]], [p[1] for p in c["quad"]]
+            item["rect"] = [min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)]
+        out.append(item)
+    out.sort(key=lambda i: not i["wifi"])          # QR Wi-Fi didahulukan
+    return out
+
+
+def clipboard_image():
+    if not shutil.which("wl-paste"):
+        return None
+    types = subprocess.run(["wl-paste", "--list-types"], capture_output=True, text=True).stdout.split()
+    img = next((t for t in types if t.startswith("image/")), None)
+    if not img:
+        return None
+    path = private_tmp("." + img.split("/")[1].split("+")[0])
+    with open(path, "wb") as f:
+        subprocess.run(["wl-paste", "--no-newline", "--type", img], stdout=f)
+    return path if os.path.getsize(path) > 0 else None
+
+
+def pick_file():
+    start = os.path.expanduser("~/Downloads")
+    if shutil.which("kdialog"):
+        r = subprocess.run(["kdialog", "--title", "Pilih gambar QR Wi-Fi", "--getopenfilename", start,
+                            "image/png image/jpeg image/webp image/gif image/bmp"], capture_output=True, text=True)
+    elif shutil.which("zenity"):
+        r = subprocess.run(["zenity", "--file-selection", "--title=Pilih gambar QR Wi-Fi", f"--filename={start}/",
+                            "--file-filter=Gambar | *.png *.jpg *.jpeg *.webp *.gif *.bmp"], capture_output=True, text=True)
+    else:
+        notify("Butuh dialog file", "sudo pacman -S zenity — atau: fr-wifiqr image /path/gambar.jpg")
+        sys.exit(2)
+    return r.stdout.strip() or None
+
+
+def pick_area(path):
+    """Buka layar pilih area (Quickshell). Kembalikan rect (x,y,w,h) pilihan, atau None kalau batal."""
+    qml = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")), "fr-wifiqr", "shell.qml")
+    if not (shutil.which("qs") and os.path.isfile(qml)):
+        return "auto"                                   # tanpa Quickshell: langsung mode otomatis
+    choice = private_tmp(".choice")
+    env = dict(os.environ, FR_QR_IMAGE=path, FR_QR_CHOICE=choice)
+    subprocess.run(["qs", "-p", qml], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        val = open(choice).read().strip()
+    finally:
+        os.unlink(choice)
+    if not val:
+        return None
+    if val == "all":
+        return "auto"
+    return tuple(float(v) for v in val.split(","))
+
+
+def from_image(path, auto=False):
+    tmp = None
+    try:
+        if not path:
+            path = tmp = clipboard_image()
+            source = "gambar di clipboard"
+            if not path:
+                path = pick_file()
+                source = "gambar"
+                if not path:
+                    return 1                          # dialog dibatalkan
+        else:
+            source = os.path.basename(path)
+        if not os.path.isfile(path):
+            notify("File tidak ditemukan", path, "dialog-warning")
+            return 1
+        if auto:
+            return handle([c["text"] for c in decode(path)], source)
+        area = pick_area(path)
+        if area is None:
+            return 1                                  # dibatalkan di layar pilih area
+        rect = None if area == "auto" else area
+        return handle([c["text"] for c in decode(path, rect)], "area yang dipilih" if rect else source)
+    finally:
+        if tmp:
+            os.unlink(tmp)
+
+
+def scan_json(path, rect):
+    print(json.dumps(summarize(decode(path, rect))))
+    return 0
+
+
+def from_screen():
+    need("grim", "slurp")
+    sel = subprocess.run(["slurp", "-d", "-b", "00000066", "-c", "ffffffcc"], capture_output=True, text=True)
+    if sel.returncode != 0:
+        return 1                                      # Esc
+    path = private_tmp(".png")
+    try:
+        subprocess.run(["grim", "-g", sel.stdout.strip(), path], check=True)
+        return handle([c["text"] for c in decode(path)], "area layar")
+    finally:
+        os.unlink(path)
+
+
+def from_cam():
+    need("zbarcam")
+    notify("Arahkan QR ke kamera", "Tutup jendela kamera untuk batal")
+    try:
+        r = subprocess.run(["zbarcam", "--raw", "-1", "--prescale=640x480"],
+                           capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        notify("Waktu habis", "Tidak ada QR terbaca dalam 60 detik", "dialog-warning")
+        return 1
+    if r.returncode != 0 and not r.stdout.strip():
+        notify("Kamera tidak bisa dibuka", (r.stderr.strip().splitlines() or ["?"])[-1], "dialog-warning")
+        return 1
+    return handle(r.stdout.splitlines(), "kamera")
+
+
+# ── bagikan ─────────────────────────────────────────────────────────
+def nm_get(field, conn):
+    r = subprocess.run(["nmcli", "-s", "-g", field, "connection", "show", "id", conn],
+                       capture_output=True, text=True)
+    v = r.stdout.rstrip("\n")
+    return v.replace("\\:", ":").replace("\\\\", "\\")
+
+
+def share(term, conn=None, out_name="fr-wifi-share.png"):
+    need("nmcli", "qrencode")
+    active = subprocess.run(["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show", "--active"],
+                            capture_output=True, text=True).stdout.splitlines()
+    for line in active if not conn else []:
+        parts = split_unescaped(line, ":")
+        # lewati hotspot sendiri: yang dibagikan adalah Wi-Fi yang sedang dipakai
+        if len(parts) >= 2 and parts[1] == "802-11-wireless" and unescape(parts[0]) != "fr-hotspot":
+            conn = unescape(parts[0]); break
+    if not conn:
+        notify("Tidak sedang tersambung ke Wi-Fi", "Sambungkan dulu, lalu bagikan", "dialog-warning")
+        return 1
+
+    ssid = nm_get("802-11-wireless.ssid", conn) or conn
+    mgmt = nm_get("802-11-wireless-security.key-mgmt", conn)
+    hidden = nm_get("802-11-wireless.hidden", conn) == "yes"
+    if mgmt in ("wpa-psk", "wpa-none"):
+        typ, pw = "WPA", nm_get("802-11-wireless-security.psk", conn)
+    elif mgmt == "sae":
+        typ, pw = "SAE", nm_get("802-11-wireless-security.psk", conn)
+    elif mgmt == "none" and nm_get("802-11-wireless-security.wep-key0", conn):
+        typ, pw = "WEP", nm_get("802-11-wireless-security.wep-key0", conn)
+    elif mgmt in ("", "owe"):
+        typ, pw = "nopass", ""
+    else:   # enterprise (802.1x) tidak bisa dibagikan lewat QR
+        notify("Tidak bisa dibagikan", f"{ssid} memakai login enterprise ({mgmt})", "dialog-warning")
+        return 1
+    if typ != "nopass" and not pw:
+        notify("Password tidak bisa dibaca", "NetworkManager menolak membuka password (izin/polkit)", "dialog-warning")
+        return 1
+
+    data = build_wifi(ssid, typ, pw, hidden)
+    if term:
+        subprocess.run(["qrencode", "-t", "ANSIUTF8", "-m", "2", data])
+        print(f"\n  {ssid}  ·  {typ}{'  ·  tersembunyi' if hidden else ''}")
+        return 0
+    out = os.path.join(RUN, out_name)
+    subprocess.run(["qrencode", "-t", "PNG", "-s", "12", "-m", "2", "-l", "M", "-o", out, data], check=True)
+    os.chmod(out, 0o600)
+    # hapus sendiri setelah 5 menit (berisi password)
+    subprocess.Popen(["sh", "-c", f'sleep 300; rm -f "{out}"'], start_new_session=True,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(json.dumps({"ssid": ssid, "type": typ, "hidden": hidden, "png": out}))
+    return 0
+
+
+def main():
+    a = sys.argv[1:]
+    mode = a[0] if a else ""
+    if mode == "image":
+        files = [x for x in a[1:] if not x.startswith("--")]
+        sys.exit(from_image(files[0] if files else None, auto="--auto" in a))
+    if mode == "scan" and len(a) > 1:             # dipakai layar pilih area: JSON tanpa password
+        rect = None
+        if "--rect" in a:
+            rect = tuple(float(v) for v in a[a.index("--rect") + 1].split(","))
+        sys.exit(scan_json(a[1], rect))
+    if mode == "screen":
+        sys.exit(from_screen())
+    if mode == "cam":
+        sys.exit(from_cam())
+    if mode == "share":
+        conn = a[a.index("--conn") + 1] if "--conn" in a and a.index("--conn") + 1 < len(a) else None
+        sys.exit(share("--term" in a, conn, "fr-hotspot-qr.png" if conn else "fr-wifi-share.png"))
+    if mode and os.path.isfile(mode):           # "Buka dengan" dari file manager
+        sys.exit(from_image(mode))
+    print(__doc__.strip()); sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

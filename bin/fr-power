@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# fr-power — mode daya yang juga mengubah rice
+#
+#   fr-power power-saver|balanced|performance   pasang mode (dan ingat pilihannya
+#                                               untuk sumber daya saat ini: charger/baterai)
+#   fr-power watch                              pantau charger, pindah mode otomatis
+#   fr-power status                             tampilkan mode & sumber daya
+#
+# Irit     : animasi & shadow niri mati, brightness maks 40%, wallpaper video dijeda
+# Seimbang : semua kembali normal
+# Performa : semua normal + profil CPU performance
+set -u
+
+CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}/fr-power"
+NIRI_INC="$CFG/niri/fr-power.kdl"
+PS="${FR_POWER_SUPPLY:-/sys/class/power_supply}"
+mkdir -p "$STATE"
+
+on_ac() {
+    local d t o
+    for d in "$PS"/*; do
+        [ -r "$d/type" ] || continue
+        read -r t < "$d/type"
+        if [ "$t" = Mains ] && [ -r "$d/online" ]; then
+            read -r o < "$d/online"
+            [ "$o" = 1 ] && return 0
+        fi
+    done
+    # laptop tanpa info charger (atau PC desktop): anggap pakai listrik
+    for d in "$PS"/*; do [ -r "$d/type" ] && read -r t < "$d/type" && [ "$t" = Mains ] && return 1; done
+    return 0
+}
+
+label() { case $1 in power-saver) echo Irit ;; balanced) echo Seimbang ;; performance) echo Performa ;; *) echo "$1" ;; esac; }
+
+niri_effects() {   # $1 = on|off
+    local tmp="$NIRI_INC.tmp"
+    if [ "$1" = off ]; then
+        cat > "$tmp" <<'EOF'
+// Dibuat otomatis oleh fr-power (mode Irit). Jangan diedit.
+animations {
+    off
+}
+layout {
+    shadow {
+        off
+    }
+}
+EOF
+    else
+        echo "// Dibuat otomatis oleh fr-power. Kosong = pakai setelan config.kdl." > "$tmp"
+    fi
+    mv "$tmp" "$NIRI_INC"
+    # kalau niri menolak (versi lama dsb.), kembalikan ke kosong supaya config tetap jalan
+    if command -v niri >/dev/null && ! niri validate >/dev/null 2>&1; then
+        echo "// fr-power: dinonaktifkan karena niri validate gagal" > "$NIRI_INC"
+        echo "peringatan: niri menolak pengaturan Irit, efek niri dibiarkan normal" >&2
+    fi
+}
+
+brightness_cap() {   # $1 = on|off
+    command -v brightnessctl >/dev/null || return 0
+    local cur
+    cur=$(brightnessctl -m -c backlight 2>/dev/null | cut -d, -f4 | tr -d %)
+    [ -n "$cur" ] || return 0
+    if [ "$1" = on ]; then
+        if [ "$cur" -gt 40 ]; then
+            echo "$cur" > "$STATE/brightness"
+            brightnessctl -q -c backlight s 40%
+        fi
+    elif [ -r "$STATE/brightness" ]; then
+        # pulihkan hanya kalau user belum mengubah brightness sendiri
+        [ "$cur" -eq 40 ] && brightnessctl -q -c backlight s "$(cat "$STATE/brightness")%"
+        rm -f "$STATE/brightness"
+    fi
+}
+
+apply() {   # $1 = mode
+    local m=$1
+    command -v powerprofilesctl >/dev/null && powerprofilesctl set "$m" 2>/dev/null
+    if [ "$m" = power-saver ]; then
+        niri_effects off
+        brightness_cap on
+        pkill -STOP -x mpvpaper 2>/dev/null
+    else
+        niri_effects on
+        brightness_cap off
+        pkill -CONT -x mpvpaper 2>/dev/null
+    fi
+    echo "$m" > "$STATE/mode"
+}
+
+notify() { command -v notify-send >/dev/null && notify-send -a "Mode daya" -i battery "$1" "$2" 2>/dev/null; }
+
+case "${1:-status}" in
+power-saver|balanced|performance)
+    if on_ac; then echo "$1" > "$STATE/ac"; else echo "$1" > "$STATE/battery"; fi
+    apply "$1"
+    case $1 in
+        power-saver) notify "Mode Irit" "Animasi & shadow mati, layar maks 40%" ;;
+        balanced)    notify "Mode Seimbang" "Efek kembali normal" ;;
+        performance) notify "Mode Performa" "CPU boost penuh" ;;
+    esac
+    ;;
+watch)
+    last=""
+    check() {
+        local src mode
+        if on_ac; then src=ac; mode=$(cat "$STATE/ac" 2>/dev/null || echo balanced)
+        else           src=battery; mode=$(cat "$STATE/battery" 2>/dev/null || echo power-saver); fi
+        [ "$src" = "$last" ] && return
+        last=$src
+        apply "$mode"
+        if [ "$src" = ac ]; then notify "Charger terpasang" "Mode $(label "$mode")"
+        else notify "Pakai baterai" "Mode $(label "$mode")"; fi
+    }
+    check
+    if command -v udevadm >/dev/null; then
+        # event-driven: diam sampai ada perubahan power_supply
+        udevadm monitor --udev --subsystem-match=power_supply 2>/dev/null |
+            while read -r _; do check; done
+    else
+        while sleep 15; do check; done
+    fi
+    ;;
+status)
+    m=$(command -v powerprofilesctl >/dev/null && powerprofilesctl get 2>/dev/null || cat "$STATE/mode" 2>/dev/null)
+    if on_ac; then s="charger"; else s="baterai"; fi
+    echo "mode: ${m:-?} ($(label "${m:-?}")) · sumber: $s"
+    echo "pilihan saat charger: $(cat "$STATE/ac" 2>/dev/null || echo balanced) · saat baterai: $(cat "$STATE/battery" 2>/dev/null || echo power-saver)"
+    ;;
+*)
+    sed -n '2,12p' "$0"; exit 1 ;;
+esac

@@ -1,0 +1,40 @@
+// FR Navy — keybind & aturan jendela tambahan (di-include dari config.kdl).
+// Diperbarui otomatis oleh update.sh; jangan diedit (taruh tambahanmu di config.kdl).
+
+binds {
+    Mod+Shift+S hotkey-overlay-title="Screenshot area + coret (satty)" { spawn "sh" "-c" "$HOME/.local/bin/fr-shot region"; }
+    Mod+Ctrl+S  hotkey-overlay-title="Screenshot layar + coret (satty)" { spawn "sh" "-c" "$HOME/.local/bin/fr-shot screen"; }
+    Mod+Alt+R   hotkey-overlay-title="Rekam layar: mulai / berhenti" { spawn "sh" "-c" "$HOME/.local/bin/fr-rec toggle"; }
+    Mod+Alt+C   hotkey-overlay-title="Ambil warna (hex ke clipboard)" { spawn "sh" "-c" "$HOME/.local/bin/fr-pick"; }
+    Mod+Grave   hotkey-overlay-title="Terminal scratchpad" { spawn "sh" "-c" "$HOME/.local/bin/fr-scratch"; }
+    Mod+Alt+V   hotkey-overlay-title="Riwayat clipboard" { spawn "sh" "-c" "$HOME/.local/bin/fr-clip"; }
+    Mod+Alt+E   hotkey-overlay-title="Pilih emoji" { spawn "sh" "-c" "$HOME/.local/bin/fr-emoji"; }
+}
+
+// pencatat riwayat clipboard (satu proses wl-paste kecil, idle saat tidak ada salinan baru)
+spawn-at-startup "sh" "-c" "$HOME/.local/bin/fr-clip watch"
+
+// terminal scratchpad: melayang di tengah
+window-rule {
+    match app-id="^fr-scratch$"
+    open-floating true
+    default-column-width { proportion 0.55; }
+    default-window-height { proportion 0.6; }
+}
+
+// editor screenshot satty: melayang
+window-rule {
+    match app-id=r#"^(com\.gabm\.satty|org\.satty\.satty)$"#
+    open-floating true
+}
+
+// Zoom: popup kecil (toolbar share screen, video melayang, pengaturan, chat)
+// jangan di-tile jadi kolom. Jendela meeting utama tetap normal.
+window-rule {
+    match app-id=r#"^(zoom|us\.zoom\.Zoom)$"# title=r#"^(zoom|as_toolbar|zoom_linux_float_video_window|Settings|Chat|Participants.*|Zoom - .*Notification.*)$"#
+    open-floating true
+}
+window-rule {
+    match app-id=r#"^(zoom|us\.zoom\.Zoom)$"# title="^as_toolbar$"
+    open-focused false
+}

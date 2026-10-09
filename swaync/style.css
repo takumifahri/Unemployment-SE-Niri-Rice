@@ -1,0 +1,68 @@
+/* FR Navy — swaync */
+@define-color bg #0B0F17;
+@define-color surface #121826;
+@define-color surface2 #1A2233;
+@define-color border #24304A;
+@define-color text #E6EAF2;
+@define-color muted #8A96AD;
+@define-color accent #6EA8FE;
+@define-color urgent #F27A7A;
+
+* { font-family: "Inter"; font-size: 13px; }
+
+.notification-row { outline: none; background: transparent; }
+.notification-row:focus, .notification-row:hover { background: transparent; }
+
+.notification {
+  background: @surface;
+  border: 1px solid @border;
+  border-radius: 14px;
+  margin: 6px 10px;
+  padding: 0;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+}
+.notification.critical { border-color: @urgent; }
+
+.notification-content { padding: 10px; }
+.summary { color: @text; font-weight: 600; font-size: 14px; }
+.body { color: @muted; }
+.time { color: @muted; font-size: 11px; margin-right: 18px; }
+
+.close-button {
+  background: @surface2; color: @text;
+  border-radius: 99px; min-width: 22px; min-height: 22px;
+  margin: 8px; padding: 0;
+}
+.close-button:hover { background: @urgent; color: @bg; }
+
+.notification-default-action, .notification-action {
+  background: transparent; color: @text; border: none; border-radius: 14px;
+}
+.notification-default-action:hover, .notification-action:hover { background: @surface2; }
+
+.control-center {
+  background: alpha(@bg, 0.96);
+  border: 1px solid @border;
+  border-radius: 16px;
+  padding: 6px;
+}
+.control-center-list { background: transparent; }
+
+.widget-title { color: @text; font-size: 16px; font-weight: 600; margin: 10px 14px; }
+.widget-title > button {
+  background: @surface2; color: @text; border: 1px solid @border;
+  border-radius: 10px; padding: 4px 12px;
+}
+.widget-title > button:hover { border-color: @accent; color: @accent; }
+
+.widget-dnd { color: @muted; margin: 4px 14px 10px; }
+.widget-dnd > switch { background: @surface2; border-radius: 99px; border: 1px solid @border; }
+.widget-dnd > switch:checked { background: @accent; }
+.widget-dnd > switch slider { background: @text; border-radius: 99px; }
+
+.widget-mpris-player {
+  background: @surface; border: 1px solid @border;
+  border-radius: 14px; margin: 6px 10px; padding: 10px;
+}
+.widget-mpris-title { color: @text; font-weight: 600; }
+.widget-mpris-subtitle { color: @muted; }

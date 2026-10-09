@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# fr-clip — riwayat clipboard (cliphist) lewat fuzzel.
+#   fr-clip          pilih → salin lagi
+#   fr-clip delete   pilih → hapus satu entri
+#   fr-clip wipe     hapus semua riwayat
+#   fr-clip watch    jalankan pencatat (dipanggil niri saat login; satu proses wl-paste kecil)
+# Isi dari pengelola password (ditandai "sensitive") tidak dicatat oleh cliphist.
+set -u
+need() { command -v "$1" >/dev/null || { notify-send -a Clipboard "Program belum terpasang" "sudo pacman -S $2"; exit 1; }; }
+need cliphist cliphist; need wl-copy wl-clipboard
+# nomor ID cliphist disembunyikan (--with-nth), tapi tetap ikut di hasil supaya bisa di-decode
+nth=(); fuzzel --help 2>&1 | grep -q -- --with-nth && nth=(--with-nth=2 --nth-delimiter="$(printf '\t')")
+menu() { fuzzel --dmenu --prompt "$1  " --placeholder "$2" --width 46 --lines 10 "${nth[@]}" 2>/dev/null; }
+
+case "${1:-}" in
+"")
+    sel=$(cliphist list | menu "󰅌" "Cari riwayat salinan…") || exit 0
+    [ -n "$sel" ] && printf '%s' "$sel" | cliphist decode | wl-copy ;;
+delete)
+    sel=$(cliphist list | menu "󰆴" "Pilih yang mau dihapus…") || exit 0
+    [ -n "$sel" ] && printf '%s' "$sel" | cliphist delete && notify-send -a Clipboard "Entri dihapus" ;;
+wipe)
+    ans=$(printf 'Batal\nHapus semua riwayat\n' | fuzzel --dmenu --prompt "󰆴  " --placeholder "Yakin hapus semua?" --width 30 --lines 2 2>/dev/null) || exit 0
+    [ "$ans" = "Hapus semua riwayat" ] && cliphist wipe && notify-send -a Clipboard "Riwayat clipboard dikosongkan" ;;
+watch)
+    pgrep -u "$USER" -f "wl-paste --watch cliphist store" >/dev/null && exit 0
+    exec wl-paste --watch cliphist store ;;
+*) sed -n '2,7p' "$0"; exit 1 ;;
+esac

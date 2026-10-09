@@ -1,0 +1,35 @@
+#!/bin/sh
+# fr-thumbs — thumbnail JPEG 480×288 untuk grid wallpaper di panel kontrol.
+# Dibuat sekali, dipakai ulang; panel jadi nggak perlu decode PNG 4K tiap dibuka.
+src="$HOME/Pictures/Wallpaper"
+dst="${XDG_CACHE_HOME:-$HOME/.cache}/fr-thumbs"
+mkdir -p "$dst"
+
+# satu instance saja
+lock="$dst/.lock"
+mkdir "$lock" 2>/dev/null || exit 0
+trap 'rmdir "$lock"' EXIT INT TERM
+renice -n 19 $$ >/dev/null 2>&1
+
+if command -v magick >/dev/null; then
+    conv() { magick "$1[0]" -thumbnail 480x288^ -gravity center -extent 480x288 -quality 82 "$2"; }
+elif command -v convert >/dev/null; then   # ImageMagick 6
+    conv() { convert "$1[0]" -thumbnail 480x288^ -gravity center -extent 480x288 -quality 82 "$2"; }
+elif command -v ffmpeg >/dev/null; then
+    conv() { ffmpeg -loglevel error -y -i "$1" -vf "scale=480:288:force_original_aspect_ratio=increase,crop=480:288" -frames:v 1 -q:v 4 "$2"; }
+else
+    exit 0   # tanpa ImageMagick/ffmpeg: panel tetap pakai file asli
+fi
+
+for f in "$src"/*.png "$src"/*.jpg "$src"/*.jpeg "$src"/*.webp; do
+    [ -f "$f" ] || continue
+    t="$dst/${f##*/}.jpg"
+    [ "$t" -nt "$f" ] && continue
+    conv "$f" "$t.tmp.jpg" 2>/dev/null && mv "$t.tmp.jpg" "$t"
+done
+
+# buang thumbnail yang file aslinya sudah dihapus
+for t in "$dst"/*.jpg; do
+    [ -f "$t" ] || continue
+    b=${t##*/}; [ -f "$src/${b%.jpg}" ] || rm -f "$t"
+done

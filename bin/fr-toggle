@@ -1,0 +1,17 @@
+#!/bin/sh
+# fr-toggle <config> [halaman]
+#   fr-toggle radial-launcher
+#   fr-toggle fr-control            (panel lengkap)
+#   fr-toggle fr-control wifi       (popup khusus: wifi | volume | brightness)
+# Klik lagi tombol yang sama = tutup. Klik tombol lain = ganti popup.
+cfg="$HOME/.config/$1/shell.qml"
+page="${2:-main}"
+state="${XDG_RUNTIME_DIR:-/tmp}/fr-toggle-$1"
+
+if pgrep -f "qs -p $cfg" >/dev/null; then
+  pkill -f "qs -p $cfg"
+  [ "$(cat "$state" 2>/dev/null)" = "$page" ] && exit 0
+  sleep 0.15
+fi
+echo "$page" > "$state"
+FR_PAGE="$page" exec qs -p "$cfg"

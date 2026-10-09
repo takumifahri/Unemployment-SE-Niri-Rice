@@ -1,0 +1,20 @@
+#!/bin/sh
+# fr-weather — data cuaca (JSON wttr.in, bahasa Indonesia), di-cache 30 menit.
+#   fr-weather            cetak JSON (ambil baru kalau cache kedaluwarsa)
+#   fr-weather refresh    paksa ambil baru
+# Kota: isi ~/.config/fr-profile/city (mis. "Bogor"); kosong = otomatis dari IP.
+CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
+city=$(head -1 "$CFG/fr-profile/city" 2>/dev/null | sed 's/ /+/g')
+C="${XDG_CACHE_HOME:-$HOME/.cache}/fr-weather-${city:-auto}.json"
+mkdir -p "${C%/*}"
+age=999999
+[ -s "$C" ] && age=$(( $(date +%s) - $(stat -c %Y "$C") ))
+if [ "$age" -gt 1800 ] || [ "${1:-}" = refresh ]; then
+    if curl -fsS --max-time 6 "https://wttr.in/${city}?format=j1&lang=id" -o "$C.tmp" 2>/dev/null \
+        && grep -q current_condition "$C.tmp"; then
+        mv "$C.tmp" "$C"
+    else
+        rm -f "$C.tmp"   # gagal (offline dsb.): pakai cache lama kalau ada
+    fi
+fi
+cat "$C" 2>/dev/null

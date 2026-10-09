@@ -1,0 +1,122 @@
+/* FR Navy — waybar */
+@define-color bg #0B0F17;
+@define-color surface #121826;
+@define-color surface2 #1A2233;
+@define-color border #24304A;
+@define-color text #E6EAF2;
+@define-color muted #8A96AD;
+@define-color accent #6EA8FE;
+@define-color teal #7FD1B9;
+@define-color warn #F2C46D;
+@define-color urgent #F27A7A;
+
+* {
+  font-family: "Inter", "JetBrainsMono Nerd Font";
+  font-size: 12.5px;
+  font-weight: 500;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+}
+
+window#waybar { background: transparent; color: @text; }
+
+/* setiap grup modul jadi "pill" sendiri */
+.modules-left, .modules-center, .modules-right {
+  background: alpha(@bg, 0.92);
+  border: 1px solid @border;
+  border-radius: 12px;
+  padding: 0 6px;
+}
+
+#custom-logo { color: @accent; font-size: 15px; padding: 0 9px; margin: 4px 0; border-radius: 8px; }
+
+#workspaces { margin: 0 4px; }
+#workspaces button {
+  min-width: 8px;
+  min-height: 8px;
+  padding: 0;
+  margin: 12px 3px;
+  font-size: 1px;   /* label kosong jangan bikin tombol jadi tinggi */
+  border-radius: 99px;
+  background: @border;
+  transition: all 180ms ease;
+}
+#workspaces button label { font-size: 1px; min-height: 0; padding: 0; }
+#workspaces button.active { min-width: 22px; background: @accent; }
+#workspaces button.urgent { background: @urgent; }
+#workspaces button:hover { background: @muted; }
+
+/* info sistem */
+#cpu, #memory, #disk {
+  color: @muted;
+  padding: 0 7px;
+  margin: 4px 0;
+  border-radius: 8px;
+  font-feature-settings: "tnum";
+}
+#cpu { margin-left: 6px; }
+#cpu:hover, #memory:hover, #disk:hover { background: @surface2; color: @text; }
+#cpu.warning, #memory.warning, #disk.warning { color: @warn; }
+#cpu.critical, #memory.critical, #disk.critical { color: @urgent; }
+
+#window { color: @muted; padding: 0 10px; margin-left: 6px; border-left: 1px solid @border; }
+window#waybar.empty #window { padding: 0; margin: 0; border: none; }
+
+#clock { font-weight: 600; padding: 0 12px; letter-spacing: 0.5px; }
+
+#tray, #power-profiles-daemon, #pulseaudio, #backlight, #network, #battery, #custom-notification, #custom-control {
+  padding: 0 8px;
+  margin: 4px 0;
+  border-radius: 8px;
+  color: @text;
+  font-feature-settings: "tnum";
+}
+#pulseaudio:hover, #backlight:hover, #network:hover, #battery:hover,
+#custom-notification:hover, #custom-logo:hover, #custom-control:hover,
+#power-profiles-daemon:hover { background: @surface2; }
+#power-profiles-daemon { font-family: "JetBrainsMono Nerd Font"; }
+#power-profiles-daemon.performance { color: @warn; }
+#power-profiles-daemon.balanced { color: @accent; }
+#power-profiles-daemon.power-saver { color: @teal; }
+#custom-control { font-family: "JetBrainsMono Nerd Font"; font-size: 14px; color: @accent; padding: 0 10px; }
+#tray { padding: 0 10px; }
+#tray > .needs-attention { background: @urgent; border-radius: 6px; }
+#pulseaudio.muted { color: @muted; }
+#network.disconnected { color: @muted; }
+#battery.charging { color: @teal; }
+#battery.warning:not(.charging) { color: @warn; }
+#battery.critical:not(.charging) { color: @urgent; }
+#custom-notification { font-family: "JetBrainsMono Nerd Font"; padding-right: 10px; }
+
+tooltip {
+  background: @surface;
+  border: 1px solid @border;
+  border-radius: 10px;
+}
+tooltip label { color: @text; padding: 4px; }
+
+/* indikator rekam layar (kosong = tersembunyi) */
+#custom-rec {
+  color: @urgent;
+  font-family: "JetBrainsMono Nerd Font";
+  font-weight: 700;
+  padding: 0 10px;
+  margin: 4px 2px;
+  border-radius: 8px;
+  background: alpha(@urgent, 0.14);
+}
+#custom-rec:hover { background: alpha(@urgent, 0.24); }
+
+/* indikator hotspot (kosong = tersembunyi) */
+#custom-hotspot {
+  color: @accent;
+  font-family: "JetBrainsMono Nerd Font";
+  font-weight: 600;
+  padding: 0 10px;
+  margin: 4px 2px;
+  border-radius: 8px;
+  background: alpha(@accent, 0.12);
+}
+#custom-hotspot.idle { color: @muted; background: alpha(@muted, 0.10); }
+#custom-hotspot:hover { background: alpha(@accent, 0.22); }

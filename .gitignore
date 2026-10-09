@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.bak
+*.bak-*
+*.tmp
+personal/hotspot.json

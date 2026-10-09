@@ -1,0 +1,12 @@
+#!/bin/sh
+# fr-pick — klik piksel mana pun, kode hex-nya tersalin ke clipboard.
+command -v hyprpicker >/dev/null || { notify-send "Ambil warna" "Butuh 'hyprpicker' (sudo pacman -S hyprpicker)"; exit 1; }
+c=$(hyprpicker -a -f hex 2>/dev/null) || exit 0
+[ -n "$c" ] || exit 0
+icon=""
+im=$(command -v magick || command -v convert)
+if [ -n "$im" ]; then
+    icon="${XDG_RUNTIME_DIR:-/tmp}/fr-pick.png"
+    "$im" -size 64x64 "xc:$c" "$icon" 2>/dev/null || icon=""
+fi
+notify-send -a "Ambil warna" ${icon:+-i "$icon"} "$c" "Kode warna disalin ke clipboard"

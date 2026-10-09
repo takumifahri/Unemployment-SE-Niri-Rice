@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Sambung Wi-Fi dari QR
+Name[en]=Connect to Wi-Fi from QR
+Comment=Baca QR Wi-Fi di gambar lalu sambungkan
+Icon=network-wireless
+Exec=sh -c '"$HOME/.local/bin/fr-wifiqr" image "$1"' fr-wifiqr %f
+MimeType=image/png;image/jpeg;image/webp;image/gif;image/bmp;
+NoDisplay=true
+Terminal=false

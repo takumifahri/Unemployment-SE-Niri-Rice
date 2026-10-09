@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# fr-shot — screenshot lalu buka di satty untuk dicoret/diberi panah.
+#   fr-shot region   pilih area (default)
+#   fr-shot screen   seluruh layar yang sedang fokus
+# Di satty: Enter = salin ke clipboard + simpan, Ctrl+S = simpan, Esc = batal.
+# Hasil: ~/Pictures/Screenshots/YYYY-MM-DD_HH-MM-SS.png
+set -u
+mkdir -p "$HOME/Pictures/Screenshots"
+for c in grim satty; do
+    command -v "$c" >/dev/null || { notify-send "Screenshot" "Butuh '$c' (sudo pacman -S grim slurp satty)"; exit 1; }
+done
+case "${1:-region}" in
+region)
+    command -v slurp >/dev/null || { notify-send "Screenshot" "Butuh 'slurp'"; exit 1; }
+    geom=$(slurp -d -b 00000066 -c ffffffcc -s ffffff10 -w 2) || exit 0   # Esc = batal
+    grim -g "$geom" - ;;
+screen)
+    out=$(niri msg -j focused-output 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["name"])' 2>/dev/null)
+    grim ${out:+-o "$out"} - ;;
+*) sed -n '2,7p' "$0"; exit 1 ;;
+esac | satty --filename - --early-exit

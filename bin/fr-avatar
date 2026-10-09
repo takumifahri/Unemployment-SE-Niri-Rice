@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# fr-avatar — foto & nama profil (dipakai panel kontrol dan lockscreen)
+#
+#   fr-avatar set <gambar>   crop jadi persegi 512px → ~/.face
+#   fr-avatar pick           pilih gambar lewat dialog file, lalu set
+#   fr-avatar default        avatar huruf inisial dengan warna tema aktif
+#   fr-avatar name "Nama"    simpan nama tampilan ("" = pakai nama akun)
+#   fr-avatar show           tampilkan nama & lokasi foto
+set -u
+FACE="$HOME/.face"
+CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
+PROF="$CFG/fr-profile"
+mkdir -p "$PROF"
+
+account_name() {
+    local g
+    g=$(getent passwd "$USER" 2>/dev/null | cut -d: -f5 | cut -d, -f1)
+    echo "${g:-$USER}"
+}
+display_name() { local n; n=$(cat "$PROF/name" 2>/dev/null); echo "${n:-$(account_name)}"; }
+
+crop() {   # $1 = sumber, $2 = tujuan png
+    if command -v magick >/dev/null; then
+        magick "$1[0]" -auto-orient -thumbnail 512x512^ -gravity center -extent 512x512 "PNG32:$2"
+    elif command -v convert >/dev/null; then
+        convert "$1[0]" -auto-orient -thumbnail 512x512^ -gravity center -extent 512x512 "PNG32:$2"
+    elif command -v ffmpeg >/dev/null; then
+        ffmpeg -loglevel error -y -i "$1" -vf "scale=512:512:force_original_aspect_ratio=increase,crop=512:512" -frames:v 1 "$2"
+    else
+        cp "$1" "$2"
+    fi
+}
+
+finish() {   # pasang hasil + salinan .face.icon (dibaca SDDM/KDE)
+    mv "$1" "$FACE"
+    cp "$FACE" "$HOME/.face.icon" 2>/dev/null
+    echo "Foto profil disimpan di $FACE"
+}
+
+theme_colors() {   # cetak "surface2 accent" dari tema aktif, default navy
+    local cur
+    cur=$(cat "$CFG/fr-theme/current" 2>/dev/null || echo navy)
+    python3 - "$CFG/fr-theme/themes.json" "$cur" 2>/dev/null <<'PY' || echo "#1A2233 #6EA8FE"
+import json, sys
+c = json.load(open(sys.argv[1]))[sys.argv[2]]["colors"]
+print(c["surface2"], c["accent"])
+PY
+}
+
+case "${1:-show}" in
+set)
+    src="${2:-}"
+    [ -f "$src" ] || { echo "File tidak ditemukan: $src" >&2; exit 1; }
+    tmp="$FACE.tmp.png"
+    crop "$src" "$tmp" 2>/dev/null && [ -s "$tmp" ] || { rm -f "$tmp"; echo "Gagal memproses gambar" >&2; exit 1; }
+    finish "$tmp"
+    echo "$src" > "$PROF/source"
+    ;;
+pick)
+    start="$HOME/Pictures"
+    if command -v kdialog >/dev/null; then
+        f=$(kdialog --title "Pilih foto profil" --getopenfilename "$start" "image/png image/jpeg image/webp")
+    elif command -v zenity >/dev/null; then
+        f=$(zenity --file-selection --title="Pilih foto profil" --filename="$start/" \
+            --file-filter="Gambar | *.png *.jpg *.jpeg *.webp")
+    else
+        echo "Butuh kdialog atau zenity untuk dialog file." >&2
+        command -v notify-send >/dev/null && notify-send "Foto profil" "Install zenity atau kdialog untuk memilih file."
+        exit 2
+    fi
+    [ -n "${f:-}" ] || exit 1   # dibatalkan
+    exec "$0" set "$f"
+    ;;
+default)
+    read -r bg fg <<< "$(theme_colors)"
+    letter=$(display_name | cut -c1 | tr '[:lower:]' '[:upper:]')
+    font=$(fc-match -f '%{file}' 'Inter:bold' 2>/dev/null)
+    tmp="$FACE.tmp.png"
+    if command -v magick >/dev/null || command -v convert >/dev/null; then
+        im=$(command -v magick || command -v convert)
+        "$im" -size 512x512 "xc:$bg" ${font:+-font "$font"} -fill "$fg" -pointsize 260 \
+            -gravity center -annotate +0+8 "$letter" "PNG32:$tmp" && finish "$tmp"
+    else
+        echo "Butuh ImageMagick untuk membuat avatar inisial." >&2; exit 1
+    fi
+    rm -f "$PROF/source"
+    ;;
+name)
+    n=$(printf '%s' "${2:-}" | tr -d '\n<>&' | cut -c1-40)
+    if [ -n "$n" ]; then printf '%s\n' "$n" > "$PROF/name"; else rm -f "$PROF/name"; fi
+    echo "Nama tampilan: $(display_name)"
+    ;;
+show)
+    echo "nama : $(display_name)"
+    [ -f "$FACE" ] && echo "foto : $FACE" || echo "foto : (belum ada)"
+    ;;
+*) sed -n '2,9p' "$0"; exit 1 ;;
+esac

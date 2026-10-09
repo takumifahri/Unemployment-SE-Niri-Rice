@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""fr-theme — ganti palet warna FR di semua komponen sekaligus.
+
+  fr-theme            → tampilkan tema aktif
+  fr-theme list       → daftar tema
+  fr-theme <nama>     → pasang tema (navy, ungu, sakura, kopi, hutan, laut, grafit)
+
+Cara kerja: nilai warna palet LAMA di tiap file config diganti dengan palet BARU
+(hex #RRGGBB, hex polos di fuzzel, dan "r, g, b" di rgba()). Jadi file yang sudah
+kamu ubah sendiri tetap aman, cuma warnanya yang berganti.
+"""
+import json, os, re, subprocess, sys
+
+HOME = os.path.expanduser("~")
+CFG = os.environ.get("XDG_CONFIG_HOME", os.path.join(HOME, ".config"))
+DIR = os.path.join(CFG, "fr-theme")
+THEMES = os.path.join(DIR, "themes.json")
+CURRENT = os.path.join(DIR, "current")
+
+TARGETS = [
+    "waybar/style.css", "swaync/style.css", "fuzzel/fuzzel.ini",
+    "hypr/hyprlock-editorial.conf", "hypr/hyprlock-center.conf", "hypr/hyprlock-custom.conf",
+    "radial-launcher/shell.qml", "fr-control/shell.qml", "fr-sysmon/shell.qml", "fr-wifiqr/shell.qml",
+    "niri/config.kdl", "satty/config.toml",
+]
+
+
+def rgb(h):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def recolor(text, old, new, bare_hex):
+    """Dua fase (lama → token → baru) supaya warna nggak saling tertimpa berantai."""
+    seen, keys = set(), []
+    for k, v in old.items():           # lewati warna duplikat di palet lama
+        if v.lower() not in seen and k in new:
+            seen.add(v.lower()); keys.append(k)
+
+    for i, k in enumerate(keys):
+        o = old[k].lstrip("#")
+        r, g, b = rgb(o)
+        text = re.sub(r"(?i)#" + o + r"(?![0-9a-f])", "#\x00X%d\x00" % i, text)
+        if bare_hex:   # fuzzel: background=0b0f17f2
+            text = re.sub(r"(?im)(=\s*)" + o + r"(?=[0-9a-f]{2}\s*$|\s*$)", "\\g<1>\x00H%d\x00" % i, text)
+        text = re.sub(r"(rgba?\(\s*)%d,\s*%d,\s*%d\b" % (r, g, b), "\\g<1>\x00R%d\x00" % i, text)
+
+    for i, k in enumerate(keys):
+        n = new[k].lstrip("#")
+        text = text.replace("\x00H%d\x00" % i, n.lower())
+        text = text.replace("\x00R%d\x00" % i, "%d, %d, %d" % rgb(n))
+        text = text.replace("\x00X%d\x00" % i, n.upper())
+    return text
+
+
+def detect(text, themes, fallback):
+    """Tebak palet yang sedang dipakai sebuah file dari warna-warna khasnya."""
+    keys = ("bg", "surface", "surface2", "border", "text", "muted", "accent")
+    low = text.lower()
+    def score(t):
+        n = 0
+        for k in keys:
+            h = t["colors"][k].lstrip("#").lower()
+            r, g, b = rgb(h)
+            if "#" + h in low or "=" + h in low or re.search(r"\(\s*%d,\s*%d,\s*%d\b" % (r, g, b), low):
+                n += 1
+        return n
+    best = max(themes, key=lambda k: (score(themes[k]), k == fallback))
+    return best if score(themes[best]) > 0 else fallback
+
+
+def main():
+    themes = json.load(open(THEMES))
+    cur = open(CURRENT).read().strip() if os.path.exists(CURRENT) else "navy"
+    arg = sys.argv[1] if len(sys.argv) > 1 else ""
+
+    if arg in ("", "current"):
+        print(cur); return
+    if arg == "list":
+        for k, t in themes.items():
+            print(("* " if k == cur else "  ") + f"{k:8s} {t['name']} — {t['desc']}")
+        return
+    if arg not in themes:
+        sys.exit(f"Tema '{arg}' tidak ada. Pilihan: {', '.join(themes)}")
+    new = themes[arg]["colors"]
+    changed = []
+    for rel in TARGETS:
+        path = os.path.join(CFG, rel)
+        if not os.path.isfile(path):
+            continue
+        src = open(path, encoding="utf-8").read()
+        was = detect(src, themes, cur)          # file yang disalin manual bisa beda palet
+        if was == arg:
+            continue
+        out = recolor(src, themes[was]["colors"], new, bare_hex=rel.startswith("fuzzel/"))
+        if out != src:
+            open(path, "w", encoding="utf-8").write(out)
+            changed.append(rel)
+
+    open(CURRENT, "w").write(arg + "\n")
+
+    # muat ulang yang sedang jalan (niri reload sendiri saat file berubah)
+    for cmd in (["pkill", "-SIGUSR2", "-x", "waybar"], ["swaync-client", "-rs"]):
+        try:
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+        except (OSError, subprocess.TimeoutExpired):
+            pass   # program belum terpasang / nggak jalan: lewati saja
+
+    print(f"Tema {themes[arg]['name']} terpasang" + (f" ({len(changed)} file diperbarui: " + ", ".join(changed) + ")" if changed else " (semua file sudah sesuai)"))
+
+
+if __name__ == "__main__":
+    main()

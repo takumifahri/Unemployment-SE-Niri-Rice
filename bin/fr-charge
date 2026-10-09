@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# fr-charge — batas pengisian baterai (umur baterai lebih panjang). Tidak ada proses yang berjalan terus.
+#
+#   fr-charge            tampilkan batas sekarang
+#   fr-charge set 80     pasang batas (40–100) dan ingat pilihannya
+#   fr-charge restore    pasang ulang pilihan tersimpan (dipanggil saat login)
+#
+# Butuh file sysfs charge_control_end_threshold (ASUS, ThinkPad, Framework, dll.) dan
+# aturan udev dari update.sh supaya bisa ditulis tanpa sudo.
+set -u
+STATE="${XDG_CONFIG_HOME:-$HOME/.config}/fr-profile/charge-limit"
+find_file() {
+    local b
+    if [ -n "${FR_BAT_DIR:-}" ]; then b=$FR_BAT_DIR; [ -e "$b/charge_control_end_threshold" ] && echo "$b/charge_control_end_threshold"; return; fi
+    for b in /sys/class/power_supply/BAT*; do
+        [ -e "$b/charge_control_end_threshold" ] && { echo "$b/charge_control_end_threshold"; return; }
+    done
+}
+F=$(find_file)
+[ -n "$F" ] || { echo "laptop ini tidak mendukung batas pengisian" >&2; exit 2; }
+
+case "${1:-get}" in
+get) read -r v < "$F" && echo "$v" ;;
+set)
+    n=${2:-}
+    [[ $n =~ ^[0-9]+$ ]] && [ "$n" -ge 40 ] && [ "$n" -le 100 ] || { echo "pakai angka 40–100" >&2; exit 1; }
+    if ! { echo "$n" > "$F"; } 2>/dev/null; then
+        echo "tidak bisa menulis $F — jalankan ./update.sh lagi untuk memasang aturan udev" >&2
+        exit 3
+    fi
+    mkdir -p "$(dirname "$STATE")"; echo "$n" > "$STATE" ;;
+restore)
+    [ -s "$STATE" ] || exit 0
+    read -r n < "$STATE"
+    exec "$0" set "$n" ;;
+*) sed -n '2,9p' "$0"; exit 1 ;;
+esac

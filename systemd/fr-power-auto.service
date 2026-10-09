@@ -1,0 +1,12 @@
+[Unit]
+Description=FR: mode daya otomatis ikut charger
+After=graphical-session.target power-profiles-daemon.service
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/fr-power watch
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

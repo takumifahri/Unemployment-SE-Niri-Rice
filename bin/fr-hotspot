@@ -1,0 +1,397 @@
+#!/usr/bin/env python3
+"""fr-hotspot — bagikan internet laptop ke HP/perangkat lain lewat hotspot Wi-Fi.
+
+  fr-hotspot status         JSON untuk panel (nyala?, nama, password, perangkat tersambung)
+  fr-hotspot on | off | toggle
+  fr-hotspot check          cek kesiapan kartu Wi-Fi dan paket
+  fr-hotspot set ssid NAMA
+  fr-hotspot set pass SANDI (8–63 karakter)
+  fr-hotspot qr             QR hotspot untuk di-scan HP (JSON, sama seperti fr-wifiqr share)
+
+Alur: Wi-Fi sekitar → laptop → hotspot. Dibuat antarmuka virtual "frap0" di kartu yang sama
+(kartu harus mendukung AP + station bersamaan), dijalankan hostapd + dnsmasq + NAT lewat
+helper root kecil fr-hotspot-iface. Tidak lewat NetworkManager, jadi jalan dengan backend
+iwd maupun wpa_supplicant. Saat hotspot mati tidak ada proses apa pun yang tersisa.
+Nama & password disimpan di ~/.config/fr-profile/hotspot.json (mode 600).
+"""
+import getpass, json, os, re, secrets, shutil, subprocess, sys, tempfile
+
+AP = "frap0"
+HELPER = os.environ.get("FR_HS_HELPER", "/usr/local/bin/fr-hotspot-iface")
+SYSNET = os.environ.get("FR_SYSNET", "/sys/class/net")
+RUNDIR = os.environ.get("FR_HS_RUN", "/run/fr-hotspot")
+CFG = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+CONF = os.path.join(CFG, "fr-profile", "hotspot.json")
+XRUN = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+APP = "Hotspot"
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, timeout=10, inp=None):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, input=inp)
+        return r.returncode, r.stdout, r.stderr
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, "", str(e)
+
+
+def out(cmd):
+    return run(cmd)[1]
+
+
+def notify(title, body="", icon="network-wireless-hotspot"):
+    if shutil.which("notify-send"):
+        subprocess.run(["notify-send", "-a", APP, "-i", icon, title, body],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def terse(line):
+    """Pecah baris nmcli -t (':' dan '\\' di-escape)."""
+    f, cur, esc = [], "", False
+    for ch in line:
+        if esc:
+            cur += ch; esc = False
+        elif ch == "\\":
+            esc = True
+        elif ch == ":":
+            f.append(cur); cur = ""
+        else:
+            cur += ch
+    f.append(cur)
+    return f
+
+
+def have(prog):
+    return bool(shutil.which(prog)) or os.path.exists("/usr/bin/" + prog)
+
+
+# ── nama & password ─────────────────────────────────────────────────
+def default_ssid():
+    try:
+        name = open(os.path.join(CFG, "fr-profile", "name")).read().split()[0]
+    except (OSError, IndexError):
+        name = getpass.getuser()
+    return f"Hotspot {name}"[:32]
+
+
+def load_conf():
+    try:
+        c = json.load(open(CONF))
+        if c.get("ssid") and 8 <= len(c.get("pass", "")) <= 63:
+            return c
+    except (OSError, ValueError):
+        pass
+    c = {"ssid": default_ssid(),
+         "pass": "".join(secrets.choice("abcdefghjkmnpqrstuvwxyz23456789") for _ in range(10))}
+    save_conf(c)
+    return c
+
+
+def save_conf(c):
+    os.makedirs(os.path.dirname(CONF), exist_ok=True)
+    fd = os.open(CONF, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(c, f)
+
+
+# ── keadaan jaringan ────────────────────────────────────────────────
+def devices():
+    res = []
+    for l in out(["nmcli", "-t", "-f", "DEVICE,TYPE,STATE,CONNECTION", "device"]).splitlines():
+        f = terse(l)
+        if len(f) >= 4:
+            res.append({"dev": f[0], "type": f[1], "state": f[2], "conn": f[3]})
+    return res
+
+
+def wifi_dev(devs):
+    for d in devs:
+        if d["type"] == "wifi" and d["dev"] != AP:
+            return d
+    try:                           # tanpa NetworkManager: cari langsung di sysfs
+        for n in sorted(os.listdir(SYSNET)):
+            if n != AP and os.path.exists(os.path.join(SYSNET, n, "phy80211")):
+                return {"dev": n, "type": "wifi", "state": "", "conn": ""}
+    except OSError:
+        pass
+    return None
+
+
+def default_route_dev():
+    for l in out(["ip", "route", "show", "default"]).splitlines():
+        m = re.search(r"\bdev (\S+)", l)
+        if m and m.group(1) != AP:
+            return m.group(1)
+    return ""
+
+
+def phy_info(iface):
+    m = re.search(r"wiphy (\d+)", out(["iw", "dev", iface, "info"]))
+    return out(["iw", "phy", "phy" + m.group(1), "info"]) if m else ""
+
+
+def link_freq(iface):
+    """(kanal, MHz) Wi-Fi yang sedang tersambung, (0, 0) kalau tidak tersambung."""
+    m = re.search(r"channel (\d+) \((\d+) MHz\)", out(["iw", "dev", iface, "info"]))
+    return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+
+
+def has_ap(pinfo):
+    return bool(re.search(r"Supported interface modes:(?:\n\s+\*.*)*\n\s+\* AP\b", pinfo))
+
+
+def concurrent_ok(pinfo):
+    """Apakah kartu bisa managed (station) + AP sekaligus?"""
+    if not has_ap(pinfo):
+        return False
+    m = re.search(r"valid interface combinations:\n((?:\s+[*\s].*\n?)+)", pinfo)
+    if not m:
+        return False
+    for c in re.split(r"\n\s+\*", "\n" + m.group(1)):
+        groups = [(set(x.strip() for x in g.split(",")), int(n))
+                  for g, n in re.findall(r"#\{\s*([^}]*)\}\s*<=\s*(\d+)", c)]
+        tot = re.search(r"total <= (\d+)", c)
+        if not groups or not tot or int(tot.group(1)) < 2:
+            continue
+        gm = [n for g, n in groups if "managed" in g]
+        ga = [n for g, n in groups if "AP" in g]
+        same = [n for g, n in groups if "managed" in g and "AP" in g]
+        if (same and same[0] >= 2) or (gm and ga and not same):
+            return True
+    return False
+
+
+def freq_blocked(pinfo, mhz):
+    """Kanal yang tidak boleh dipakai memancar (DFS/radar, no IR, nonaktif)."""
+    for l in pinfo.splitlines():
+        if re.search(r"\b%d(\.0)? MHz" % mhz, l):
+            return any(k in l for k in ("no IR", "radar detection", "disabled"))
+    return False
+
+
+def reg_country():
+    m = re.search(r"country (\w\w):", out(["iw", "reg", "get"]))
+    return m.group(1) if m else ""
+
+
+def upstream_name(devs, w):
+    if w and w["state"] == "connected" and w["conn"]:
+        return "Wi-Fi " + w["conn"]
+    up = default_route_dev()
+    kind = next((d["type"] for d in devs if d["dev"] == up), "")
+    return {"ethernet": "Kabel LAN", "gsm": "Modem"}.get(kind, up)
+
+
+def plan(devs):
+    """→ dict(parent, channel, upstream) atau raise Fail."""
+    w = wifi_dev(devs)
+    if not w:
+        raise Fail("Kartu Wi-Fi tidak ditemukan")
+    pinfo = phy_info(w["dev"])
+    if not has_ap(pinfo):
+        raise Fail("Kartu Wi-Fi ini tidak mendukung mode hotspot (AP)")
+    if not concurrent_ok(pinfo):
+        raise Fail("Kartu Wi-Fi ini tidak bisa menjalankan hotspot berdampingan dengan Wi-Fi biasa")
+    chan, mhz = link_freq(w["dev"])
+    if chan:
+        # kartu satu kanal: hotspot harus di kanal yang sama dengan Wi-Fi yang dipakai
+        if mhz >= 5925:
+            raise Fail("Wi-Fi tersambung di 6 GHz — hotspot tidak bisa. Sambung ke jaringan 2,4/5 GHz.")
+        if freq_blocked(pinfo, mhz):
+            hint = ""
+            if reg_country() in ("", "00"):
+                hint = " Atur negara Wi-Fi dulu (lihat: fr-hotspot check)."
+            raise Fail(f"Wi-Fi sekarang di kanal {chan} (DFS/terbatas), hotspot tidak boleh memancar di situ. "
+                       f"Sambung ke jaringan 2,4 GHz atau kanal 5 GHz lain.{hint}")
+    else:
+        chan = 6                   # tidak tersambung Wi-Fi: 2,4 GHz kanal 6, paling kompatibel
+    for prog, pkg in (("hostapd", "hostapd"), ("dnsmasq", "dnsmasq"), ("nft", "nftables")):
+        if not have(prog):
+            raise Fail(f"{prog} belum terpasang (sudo pacman -S {pkg})")
+    if not os.access(HELPER, os.X_OK):
+        raise Fail("Helper hotspot belum terpasang — jalankan ./update.sh lagi")
+    return {"parent": w["dev"], "channel": chan, "upstream": upstream_name(devs, w)}
+
+
+# ── aksi ────────────────────────────────────────────────────────────
+def is_on():
+    try:
+        pid = int(open(os.path.join(RUNDIR, "hostapd.pid")).read().strip())
+        os.kill(pid, 0)
+    except PermissionError:
+        pass                       # proses root: ada, cuma tidak boleh dikirimi sinyal
+    except (OSError, ValueError):
+        return False
+    return os.path.exists(os.path.join(SYSNET, AP))
+
+
+def helper(args, inp=None):
+    code, _, err = run(["sudo", "-n", HELPER, *args], timeout=40, inp=inp)
+    if code:
+        msg = (err.strip().splitlines() or ["?"])[-1]
+        if msg.startswith("sudo:"):
+            msg = "izin helper ditolak — jalankan ./update.sh lagi"
+        raise Fail(msg)
+
+
+def bar():
+    """Perbarui indikator waybar sekarang juga (sinyal RTMIN+10)."""
+    subprocess.run(["pkill", "-RTMIN+10", "-x", "waybar"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def turn_on():
+    if is_on():
+        return
+    p = plan(devices())
+    c = load_conf()
+    helper(["start", p["parent"], str(p["channel"]), c["ssid"].encode().hex()], inp=c["pass"] + "\n")
+    bar()
+    notify("Hotspot menyala", f"{c['ssid']}  ·  internet dari {p['upstream'] or 'laptop'}")
+
+
+def turn_off():
+    if is_on() or os.path.exists(RUNDIR) or os.path.exists(os.path.join(SYSNET, AP)):
+        helper(["stop"])
+        bar()
+
+
+def clients():
+    macs = re.findall(r"^Station ([0-9a-f:]{17})", out(["iw", "dev", AP, "station", "dump"]), re.M)
+    lease = {}
+    try:
+        for l in open(os.path.join(RUNDIR, "leases")):
+            f = l.split()
+            if len(f) >= 4:
+                lease[f[1].lower()] = (f[2], "" if f[3] == "*" else f[3])
+    except OSError:
+        pass
+    return [{"mac": m, "ip": lease.get(m, ("", ""))[0], "name": lease.get(m, ("", ""))[1] or "Perangkat"}
+            for m in macs]
+
+
+def counter(name):
+    try:
+        return int(open(os.path.join(SYSNET, AP, "statistics", name)).read())
+    except (OSError, ValueError):
+        return 0
+
+
+def status():
+    devs = devices()
+    c = load_conf()
+    on = is_on()
+    s = {"exists": True, "on": on, "iface": AP if on else "", "ssid": c["ssid"], "password": c["pass"],
+         "clients": [], "tx": 0, "rx": 0, "mode": "bersamaan", "upstream": "", "can": True, "reason": ""}
+    if on:
+        s["clients"] = clients()
+        s["tx"], s["rx"] = counter("tx_bytes"), counter("rx_bytes")
+        s["upstream"] = upstream_name(devs, wifi_dev(devs))
+    else:
+        try:
+            s["upstream"] = plan(devs)["upstream"]
+        except Fail as e:
+            s["can"], s["reason"] = False, str(e)
+    return s
+
+
+def escape(v):
+    return re.sub(r'([\\;,:"])', r"\\\1", v)
+
+
+def qr():
+    if not have("qrencode"):
+        raise Fail("qrencode belum terpasang (sudo pacman -S qrencode)")
+    c = load_conf()
+    data = f"WIFI:T:WPA;S:{escape(c['ssid'])};P:{escape(c['pass'])};;"
+    png = os.path.join(XRUN, "fr-hotspot-qr.png")
+    subprocess.run(["qrencode", "-t", "PNG", "-s", "12", "-m", "2", "-l", "M", "-o", png, data], check=True)
+    os.chmod(png, 0o600)
+    subprocess.Popen(["sh", "-c", f'sleep 300; rm -f "{png}"'], start_new_session=True,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(json.dumps({"ssid": c["ssid"], "type": "WPA", "hidden": False, "png": png}))
+
+
+def check():
+    devs = devices()
+    w = wifi_dev(devs)
+    if not w:
+        print("✗ kartu Wi-Fi tidak ditemukan"); return 1
+    pinfo = phy_info(w["dev"])
+    backend = ""
+    for root, _, files in os.walk("/etc/NetworkManager"):
+        for fn in files:
+            try:
+                m = re.search(r"^\s*wifi\.backend\s*=\s*(\S+)", open(os.path.join(root, fn)).read(), re.M)
+                backend = m.group(1) if m else backend
+            except OSError:
+                pass
+    ok = lambda b: "✓" if b else "✗"
+    print(f"Kartu Wi-Fi     : {w['dev']} ({w['state'] or '?'}{', ' + w['conn'] if w['conn'] else ''})")
+    print(f"Backend NM      : {backend or 'wpa_supplicant'} (hotspot tidak bergantung pada ini)")
+    print(f"Mode AP         : {ok(has_ap(pinfo))}")
+    print(f"AP + Wi-Fi      : {ok(concurrent_ok(pinfo))}")
+    chan, mhz = link_freq(w["dev"])
+    if chan:
+        print(f"Kanal sekarang  : {chan} ({mhz} MHz)  {'✗ terbatas/DFS' if freq_blocked(pinfo, mhz) else '✓'}")
+    cc = reg_country()
+    print(f"Negara Wi-Fi    : {cc or '?'}" + ("  ← disarankan diatur: sudo pacman -S wireless-regdb, lalu isi "
+                                              "WIRELESS_REGDOM=\"ID\" di /etc/conf.d/wireless-regdom dan reboot"
+                                              if cc in ("", "00") else ""))
+    for prog, pkg in (("hostapd", "hostapd"), ("dnsmasq", "dnsmasq"), ("nft", "nftables"), ("qrencode", "qrencode")):
+        print(f"{prog:16s}: {ok(have(prog))}" + ("" if have(prog) else f"  sudo pacman -S {pkg}"))
+    print(f"Helper root     : {ok(os.access(HELPER, os.X_OK))}")
+    fw = [u for u in ("ufw", "firewalld") if run(["systemctl", "is-active", "-q", u])[0] == 0]
+    if fw:
+        print(f"Firewall        : {', '.join(fw)} aktif" +
+              ("  (izin untuk frap0 dipasang otomatis)" if fw == ["ufw"] else "  ← izinkan zona/antarmuka frap0 secara manual"))
+    try:
+        p = plan(devs)
+        print(f"\n→ Siap. Hotspot di {AP} (dari {p['parent']}), kanal {p['channel']}, internet dari {p['upstream'] or '—'}")
+    except Fail as e:
+        print(f"\n→ {e}")
+    return 0
+
+
+def main():
+    a = sys.argv[1:]
+    cmd = a[0] if a else ""
+    try:
+        if cmd == "status":
+            print(json.dumps(status()))
+        elif cmd == "on":
+            turn_on()
+        elif cmd == "off":
+            turn_off()
+        elif cmd == "toggle":
+            turn_off() if is_on() else turn_on()
+        elif cmd == "check":
+            sys.exit(check())
+        elif cmd == "set" and len(a) == 3 and a[1] in ("ssid", "pass"):
+            c, v = load_conf(), a[2]
+            if a[1] == "ssid":
+                if not 1 <= len(v.encode()) <= 32 or any(ord(ch) < 32 for ch in v):
+                    raise Fail("Nama hotspot 1–32 karakter")
+                c["ssid"] = v
+            else:
+                if not 8 <= len(v) <= 63 or not all(32 <= ord(ch) < 127 for ch in v):
+                    raise Fail("Password 8–63 karakter (huruf, angka, simbol biasa)")
+                c["pass"] = v
+            save_conf(c)
+            if is_on():            # terapkan langsung
+                turn_off(); turn_on()
+        elif cmd == "qr":
+            qr()
+        else:
+            print(__doc__.strip()); sys.exit(1)
+    except Fail as e:
+        print(f"fr-hotspot: {e}", file=sys.stderr)
+        if cmd in ("on", "toggle"):
+            notify("Hotspot tidak bisa menyala", str(e), "dialog-warning")
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()

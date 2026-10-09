@@ -1,0 +1,21 @@
+#!/bin/sh
+# fr-lockstyle — pilih gaya lockscreen
+#   fr-lockstyle                     tampilkan gaya aktif
+#   fr-lockstyle editorial|center    ganti gaya
+#   fr-lockstyle custom              pakai hyprlock-custom.conf (file buatanmu sendiri)
+# hyprlock.conf cuma berisi satu baris `source`, jadi update.sh bisa memperbarui
+# file gaya tanpa menimpa pilihanmu.
+D="${XDG_CONFIG_HOME:-$HOME/.config}/hypr"
+cur=$(sed -n 's|^source = \./hyprlock-\(.*\)\.conf$|\1|p' "$D/hyprlock.conf" 2>/dev/null)
+case "${1:-}" in
+"") echo "${cur:-tidak diketahui}" ;;
+editorial|center|custom)
+    [ -f "$D/hyprlock-$1.conf" ] || { echo "Gaya '$1' belum ada ($D/hyprlock-$1.conf)" >&2; exit 1; }
+    cat > "$D/hyprlock.conf" <<EOT
+# FR — hyprlock. File ini cuma memilih gaya (dikelola fr-lockstyle).
+# Ganti gaya: panel kontrol → Wallpaper → Lockscreen, atau: fr-lockstyle editorial|center|custom
+source = ./hyprlock-$1.conf
+EOT
+    echo "Gaya lockscreen: $1" ;;
+*) sed -n '2,7p' "$0"; exit 1 ;;
+esac

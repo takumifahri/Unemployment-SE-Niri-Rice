@@ -1,0 +1,84 @@
+#!/bin/sh
+# fr-sysmon-sample stream|slow|info — data mentah untuk widget fr-sysmon
+#
+# stream: satu proses yang hidup selama widget terbuka, mencetak satu sampel
+#         per detik diakhiri "END". Semua baca file pakai builtin `read`,
+#         jadi tidak ada fork selain `sleep` (versi lama: puluhan proses/detik).
+case "$1" in
+stream)
+    # daftar sensor & file frekuensi cukup dicari sekali di awal
+    nl='
+'
+    temps=""
+    for h in /sys/class/hwmon/hwmon*; do
+        [ -r "$h/name" ] || continue
+        read -r chip < "$h/name"
+        for t in "$h"/temp*_input; do
+            [ -r "$t" ] || continue
+            label=""
+            [ -r "${t%_input}_label" ] && read -r label < "${t%_input}_label"
+            temps="$temps$chip|$label|$t$nl"
+        done
+    done
+    freqs=""
+    for f in /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq; do
+        [ -r "$f" ] && freqs="$freqs$f$nl"
+    done
+
+    while :; do
+        while read -r name rest; do
+            case $name in cpu*) echo "CPU $name $rest" ;; *) break ;; esac
+        done < /proc/stat
+
+        while read -r k v _; do
+            case $k in
+                MemTotal:) mt=$v ;; MemAvailable:) ma=$v ;;
+                SwapTotal:) st=$v ;; SwapFree:) sf=$v ;;
+            esac
+        done < /proc/meminfo
+        echo "MEM $mt $ma $st $sf"
+
+        read -r l1 l5 l15 _ < /proc/loadavg
+        echo "LOAD $l1 $l5 $l15"
+
+        s=0; n=0
+        IFS=$nl
+        for f in $freqs; do
+            read -r v < "$f" && { s=$((s + v)); n=$((n + 1)); }
+        done
+        for e in $temps; do
+            chip=${e%%|*}; rest=${e#*|}; label=${rest%%|*}; file=${rest#*|}
+            read -r v < "$file" && echo "TEMP $chip|$label|$v"
+        done
+        unset IFS
+        [ "$n" -gt 0 ] && echo "FREQ $((s / n))"
+
+        r=0; w=0
+        while read -r _ _ dev _ _ rs _ _ _ ws _; do
+            case $dev in
+                nvme*n[0-9]|nvme*n[0-9][0-9]|sd[a-z]|vd[a-z]|mmcblk[0-9]) r=$((r + rs)); w=$((w + ws)) ;;
+            esac
+        done < /proc/diskstats
+        echo "DISK $r $w"
+
+        echo END
+        sleep 1
+    done
+    ;;
+slow)
+    df -B1 --output=target,size,used -x tmpfs -x devtmpfs -x efivarfs -x overlay -x squashfs 2>/dev/null |
+        awk 'NR>1 && $1 !~ /^\/(boot|run|snap)/ {print "FS " $1 "|" $2 "|" $3}'
+    # lewati ps ini sendiri & panel sysmon (induk skrip ini): %cpu ps = rata-rata sejak lahir,
+    # proses yang baru jalan selalu terlihat ratusan persen. comm ditaruh terakhir karena bisa berspasi.
+    ps -eo pid=,%cpu=,%mem=,comm= --sort=-%cpu |
+        awk -v me=$$ -v parent=$PPID '$1 != me && $1 != parent && $4 != "ps" {
+            c = $4; for (i = 5; i <= NF; i++) c = c " " $i
+            printf "PROC %s|%s|%s\n", c, $2, $3; if (++n == 5) exit }'
+    ;;
+info)
+    m=$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2- | sed 's/^ *//; s/ with .*//; s/ [0-9]*-Core Processor//')
+    echo "MODEL $m"
+    echo "THREADS $(nproc)"
+    echo "HOST $(cat /proc/sys/kernel/hostname)"
+    ;;
+esac
