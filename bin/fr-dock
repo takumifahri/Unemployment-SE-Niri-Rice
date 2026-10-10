@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# fr-dock — dock bawah auto-hide (Quickshell). Saat mati, tidak ada proses apa pun.
+#   fr-dock on | off | toggle   nyalakan / matikan (pilihan diingat untuk login berikutnya)
+#   fr-dock status              "on" / "off"
+#   fr-dock autostart           dipanggil niri saat login: jalan kalau sedang dinyalakan
+#   fr-dock set ID...           simpan daftar pin (dipakai dock saat klik kanan)
+set -u
+DIR="${XDG_CONFIG_HOME:-$HOME/.config}/fr-dock"
+QML="$DIR/shell.qml"
+FLAG="$DIR/enabled"
+
+running() { pgrep -u "$USER" -f "qs -p $QML" >/dev/null; }
+start() {
+    running && return 0
+    command -v qs >/dev/null || { echo "quickshell (qs) belum terpasang" >&2; exit 1; }
+    setsid -f qs -p "$QML" >/dev/null 2>&1 < /dev/null
+}
+stop() { pkill -u "$USER" -f "qs -p $QML" 2>/dev/null; true; }
+
+case "${1:-status}" in
+on)        mkdir -p "$DIR"; touch "$FLAG"; start ;;
+off)       rm -f "$FLAG"; stop ;;
+toggle)    if [ -f "$FLAG" ]; then "$0" off; else "$0" on; fi ;;
+status)    [ -f "$FLAG" ] && echo on || echo off ;;
+autostart) [ -f "$FLAG" ] && start; true ;;
+set)       shift; mkdir -p "$DIR"; printf '%s\n' "$@" > "$DIR/pinned" ;;
+*)         sed -n '2,7p' "$0"; exit 1 ;;
+esac

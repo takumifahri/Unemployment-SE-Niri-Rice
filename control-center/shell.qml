@@ -65,8 +65,21 @@ ShellRoot {
         if (page === "monitor") outProc.running = true;
         if (page === "volume") sinkProc.running = true;
         if (page === "calendar" && !weather) loadWeather(false);
+        if (page === "theme") dockProc.running = true;
         // buat thumbnail yang belum ada di latar belakang (dipakai saat panel dibuka berikutnya)
         if (page === "wallpaper") exec(["sh", "-c", 'command -v fr-thumbs >/dev/null && exec fr-thumbs || exec "$HOME/.local/bin/fr-thumbs"']);
+    }
+
+    // ── dock ──
+    property bool dockOn: false
+    Process {
+        id: dockProc
+        command: ["sh", "-c", 'exec "$HOME/.local/bin/fr-dock" status']
+        stdout: StdioCollector { onStreamFinished: root.dockOn = this.text.trim() === "on" }
+    }
+    function toggleDock() {
+        dockOn = !dockOn;
+        exec(["sh", "-c", 'exec "$HOME/.local/bin/fr-dock" "$1"', "sh", dockOn ? "on" : "off"]);
     }
 
     // ═════════ STATE ═════════════════════════════════════
@@ -803,6 +816,7 @@ ShellRoot {
         onTriggered: sysProc.running = true
     }
     Component.onCompleted: {
+        if (page === "theme") dockProc.running = true;   // dibuka langsung ke halaman Tema (mis. setelah ganti tema)
         tileProc.running = true;
         ppdGet.running = true;
         wallGet.running = true;
@@ -2887,6 +2901,24 @@ ShellRoot {
                                     }
                                 }
                             }
+                        }
+
+                        SectionLabel { text: "Dock" }
+                        SwitchRow {
+                            width: parent.width
+                            glyph: root.ic(0xf0379)
+                            label: "Dock bawah"
+                            sub: root.dockOn ? "Tahan kursor di tepi bawah untuk memunculkan" : "Mati — tidak ada proses yang jalan"
+                            checked: root.dockOn
+                            onToggled: root.toggleDock()
+                        }
+                        Text {
+                            visible: root.dockOn
+                            width: parent.width
+                            wrapMode: Text.Wrap
+                            text: "Klik kanan ikon di dock untuk pin / lepas pin. Klik tengah membuka jendela baru."
+                            color: root.cMuted
+                            font { family: root.fUi; pixelSize: 11 }
                         }
                     }
 

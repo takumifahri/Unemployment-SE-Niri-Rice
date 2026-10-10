@@ -19,7 +19,7 @@ di latar belakang**.
   - [Waybar](#waybar) · [Panel kontrol](#panel-kontrol) · [Launcher](#launcher) · [Monitor sistem](#monitor-sistem)
   - [Baterai](#baterai) · [Suara & layar](#suara--layar) · [Kalender & cuaca](#kalender--cuaca)
   - [Wi-Fi, QR & hotspot](#wi-fi-qr--hotspot) · [Wallpaper & lockscreen](#wallpaper--lockscreen)
-  - [Tema](#tema) · [Mode daya](#mode-daya) · [Clipboard & emoji](#clipboard--emoji) · [Alat](#alat)
+  - [Tema](#tema) · [Mode daya](#mode-daya) · [Clipboard & emoji](#clipboard--emoji) · [Dock](#dock) · [Alat](#alat)
 - [Keybind](#keybind)
 - [Perintah](#perintah)
 - [Dotfiles pribadi](#dotfiles-pribadi)
@@ -42,8 +42,8 @@ Selain lima itu, **semua panel hanya hidup saat dibuka**: panel kontrol, popup w
 monitor sistem, dan layar pilih QR adalah aplikasi Quickshell kecil yang dijalankan saat diklik
 dan langsung keluar saat ditutup (`Esc` atau klik di luar).
 
-Skrip pendukung (`fr-*`) juga tidak punya proses latar. Mode daya otomatis ikut charger adalah
-pengecualian yang bisa dinyalakan/dimatikan sendiri.
+Skrip pendukung (`fr-*`) juga tidak punya proses latar. Dua pengecualian yang bisa
+dinyalakan/dimatikan sendiri: **dock bawah** (mati secara bawaan) dan mode daya otomatis ikut charger.
 
 ---
 
@@ -268,6 +268,23 @@ Rice-nya sendiri tidak mengubah apa pun yang bisa mengganggu aplikasi seperti Zo
   *jempol*, *api*). Emoji disalin dan langsung diketik ke jendela aktif (kalau `wtype` terpasang).
   Yang terakhir dipakai muncul paling atas.
 
+### Dock
+
+Dock bawah yang **auto-hide**, mati secara bawaan. Nyalakan dari Panel kontrol → **Tema** →
+**Dock bawah**, atau `fr-dock on`.
+
+- **Muncul hanya kalau kursor ditahan di tepi bawah ±0,4 detik.** Kursor yang sekadar lewat tidak
+  memicu, jadi aman untuk toolbar Zoom, kontrol video, dan tombol di bagian bawah aplikasi.
+- **Tidak muncul di atas jendela fullscreen** (dock ada di layer *top*, di bawah fullscreen).
+- Isinya aplikasi yang di-pin, lalu aplikasi lain yang sedang terbuka (dipisah garis tipis).
+  Titik di bawah ikon = jumlah jendela; garis aksen = aplikasi yang sedang fokus.
+- **Klik** membuka aplikasi atau fokus ke jendelanya; klik lagi pindah ke jendela berikutnya dari
+  aplikasi yang sama. **Klik tengah** membuka jendela baru. **Klik kanan** pin / lepas pin.
+- Daftar pin tersimpan di `~/.config/fr-dock/pinned`. Kalau belum pernah diatur, dock mengambil
+  browser, terminal, file manager, dan editor yang terpasang.
+- Data jendela dari `niri msg event-stream` (berbasis event, tanpa polling). Saat dimatikan,
+  prosesnya berhenti total.
+
 ### Alat
 
 | Alat | Tombol | Keterangan |
@@ -311,6 +328,7 @@ daftar keybind niri: **`Mod+Shift+/`**.
 | `fr-wifiqr image\|screen\|cam\|share` | Wi-Fi lewat QR |
 | `fr-clip [delete\|wipe]` | riwayat clipboard |
 | `fr-emoji` | pemilih emoji |
+| `fr-dock on\|off\|status` | dock bawah |
 | `fr-shot region\|screen`, `fr-rec toggle`, `fr-pick`, `fr-scratch` | alat |
 
 ---
@@ -346,6 +364,7 @@ untuk file yang belum ada. Config bawaan yang dibuat niri saat pertama jalan dib
 | Menu fuzzel terlalu besar/kecil | ubah `size=` di `~/.config/fuzzel/fuzzel.ini` |
 | Lockscreen tidak berubah | `fr-lockstyle editorial` (atau `center`) |
 | Cuaca salah kota | isi nama kota di `~/.config/fr-profile/city` |
+| Dock tidak muncul | pastikan menyala (`fr-dock status`), lalu tahan kursor di tepi bawah tengah layar sebentar |
 | Lupa keybind | `Mod+Shift+/` |
 
 ---
@@ -357,6 +376,7 @@ bin/              skrip fr-* (dipasang ke ~/.local/bin)
 control-center/   panel kontrol + popup waybar (Quickshell)
 radial-launcher/  launcher pie
 sysmon/           monitor sistem
+dock/             dock bawah auto-hide
 wifiqr/           layar pilih area QR
 waybar/  swaync/  fuzzel/  hypr/  satty/     config tiap komponen
 niri/             fr-binds.kdl (di-include otomatis) + rice-snippet.kdl (contoh layout)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FR Navy v17: riwayat clipboard + emoji, indikator hotspot di waybar, repo Git; v16.2: hotspot lewat hostapd (jalan dengan iwd); v16: hotspot dari Wi-Fi laptop (fr-hotspot); v15: batas pengisian baterai (fr-charge); v14: pilih area QR + pembaca zxing; Wi-Fi via QR; alat (screenshot, rekam, warna, scratchpad, kalender); mode daya + profil; optimasi performa; palet tema; lockscreen baru + wallpaper lock terpisah + monitor sistem; control center lengkap + popup wifi/volume/brightness, sysinfo waybar, launcher ber-grup
+# FR Navy v18: dock bawah auto-hide (fr-dock); v17: riwayat clipboard + emoji, indikator hotspot di waybar, repo Git; v16.2: hotspot lewat hostapd (jalan dengan iwd); v16: hotspot dari Wi-Fi laptop (fr-hotspot); v15: batas pengisian baterai (fr-charge); v14: pilih area QR + pembaca zxing; Wi-Fi via QR; alat (screenshot, rekam, warna, scratchpad, kalender); mode daya + profil; optimasi performa; palet tema; lockscreen baru + wallpaper lock terpisah + monitor sistem; control center lengkap + popup wifi/volume/brightness, sysinfo waybar, launcher ber-grup
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
@@ -22,7 +22,7 @@ if command -v powerprofilesctl >/dev/null && ! systemctl is-active -q power-prof
 fi
 
 # file
-mkdir -p "$HOME/.local/bin" "$CFG/radial-launcher" "$CFG/fr-control" "$CFG/fr-sysmon" "$CFG/fr-theme" "$CFG/fr-wifiqr"
+mkdir -p "$HOME/.local/bin" "$CFG/radial-launcher" "$CFG/fr-control" "$CFG/fr-sysmon" "$CFG/fr-theme" "$CFG/fr-wifiqr" "$CFG/fr-dock"
 
 # laptop baru: pulihkan config pribadi dari personal/ (hasil ./snapshot.sh), tanpa menimpa yang sudah ada
 if [[ -d "$HERE/personal" ]]; then
@@ -43,7 +43,7 @@ fi
 cp "$HERE/theme/themes.json" "$CFG/fr-theme/"
 saved_theme=$(cat "$CFG/fr-theme/current" 2>/dev/null || echo navy)
 echo navy > "$CFG/fr-theme/current"
-install -m755 "$HERE/bin/fr-toggle" "$HERE/bin/fr-sysmon-sample" "$HERE/bin/fr-theme" "$HERE/bin/fr-thumbs" "$HERE/bin/fr-power" "$HERE/bin/fr-avatar" "$HERE/bin/fr-media" "$HERE/bin/fr-lockstyle" "$HERE/bin/fr-shot" "$HERE/bin/fr-pick" "$HERE/bin/fr-scratch" "$HERE/bin/fr-rec" "$HERE/bin/fr-weather" "$HERE/bin/fr-wifiqr" "$HERE/bin/fr-charge" "$HERE/bin/fr-hotspot" "$HERE/bin/fr-hotspot-bar" "$HERE/bin/fr-clip" "$HERE/bin/fr-emoji" "$HOME/.local/bin/"
+install -m755 "$HERE/bin/fr-toggle" "$HERE/bin/fr-sysmon-sample" "$HERE/bin/fr-theme" "$HERE/bin/fr-thumbs" "$HERE/bin/fr-power" "$HERE/bin/fr-avatar" "$HERE/bin/fr-media" "$HERE/bin/fr-lockstyle" "$HERE/bin/fr-shot" "$HERE/bin/fr-pick" "$HERE/bin/fr-scratch" "$HERE/bin/fr-rec" "$HERE/bin/fr-weather" "$HERE/bin/fr-wifiqr" "$HERE/bin/fr-charge" "$HERE/bin/fr-hotspot" "$HERE/bin/fr-hotspot-bar" "$HERE/bin/fr-clip" "$HERE/bin/fr-emoji" "$HERE/bin/fr-dock" "$HOME/.local/bin/"
 cp "$HERE/waybar/config.jsonc" "$HERE/waybar/style.css" "$CFG/waybar/"
 cp "$HERE/fuzzel/fuzzel.ini" "$CFG/fuzzel/"
 # lockscreen: file gaya selalu diperbarui; hyprlock.conf cuma menunjuk gaya pilihanmu
@@ -66,6 +66,7 @@ cp "$HERE/radial-launcher/shell.qml" "$CFG/radial-launcher/"
 cp "$HERE/control-center/shell.qml"  "$CFG/fr-control/"
 cp "$HERE/sysmon/shell.qml"          "$CFG/fr-sysmon/"
 cp "$HERE/wifiqr/shell.qml"          "$CFG/fr-wifiqr/"
+cp "$HERE/dock/shell.qml"            "$CFG/fr-dock/"
 
 if [[ ! -e "$CFG/hypr/wallpaper.png" ]]; then
   first=$(ls "$HOME"/Pictures/Wallpaper/*.{png,jpg,jpeg,webp} 2>/dev/null | head -1 || true)

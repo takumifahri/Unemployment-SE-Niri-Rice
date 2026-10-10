@@ -20,7 +20,7 @@ CURRENT = os.path.join(DIR, "current")
 TARGETS = [
     "waybar/style.css", "swaync/style.css", "fuzzel/fuzzel.ini",
     "hypr/hyprlock-editorial.conf", "hypr/hyprlock-center.conf", "hypr/hyprlock-custom.conf",
-    "radial-launcher/shell.qml", "fr-control/shell.qml", "fr-sysmon/shell.qml", "fr-wifiqr/shell.qml",
+    "radial-launcher/shell.qml", "fr-control/shell.qml", "fr-sysmon/shell.qml", "fr-wifiqr/shell.qml", "fr-dock/shell.qml",
     "niri/config.kdl", "satty/config.toml",
 ]
 

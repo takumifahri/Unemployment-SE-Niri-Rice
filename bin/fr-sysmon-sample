@@ -68,12 +68,32 @@ stream)
 slow)
     df -B1 --output=target,size,used -x tmpfs -x devtmpfs -x efivarfs -x overlay -x squashfs 2>/dev/null |
         awk 'NR>1 && $1 !~ /^\/(boot|run|snap)/ {print "FS " $1 "|" $2 "|" $3}'
-    # lewati ps ini sendiri & panel sysmon (induk skrip ini): %cpu ps = rata-rata sejak lahir,
-    # proses yang baru jalan selalu terlihat ratusan persen. comm ditaruh terakhir karena bisa berspasi.
-    ps -eo pid=,%cpu=,%mem=,comm= --sort=-%cpu |
-        awk -v me=$$ -v parent=$PPID '$1 != me && $1 != parent && $4 != "ps" {
-            c = $4; for (i = 5; i <= NF; i++) c = c " " $i
-            printf "PROC %s|%s|%s\n", c, $2, $3; if (++n == 5) exit }'
+    # CPU per proses = beban SAAT INI (selisih waktu CPU dalam 1 detik, seperti btop), bukan %cpu dari ps
+    # yang merupakan rata-rata sejak proses lahir. Persen dari total CPU (semua thread = 100%).
+    snap() {
+        cat /proc/[0-9]*/stat 2>/dev/null | awk '{
+            o = index($0, "("); c = 0
+            for (i = length($0); i > o; i--) if (substr($0, i, 1) == ")") { c = i; break }
+            split(substr($0, c + 2), f, " ")
+            printf "%s\t%d\t%d\t%s\n", $1, f[12] + f[13], f[22], substr($0, o + 1, c - o - 1) }'
+    }
+    read -r up0 _ < /proc/uptime; A=$(snap)
+    sleep 1
+    read -r up1 _ < /proc/uptime; B=$(snap)
+    memkb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+    { printf '%s\n' "$A"; echo "--"; printf '%s\n' "$B"; } |
+        awk -F'\t' -v me=$$ -v parent=$PPID -v up0="$up0" -v up1="$up1" -v ncpu="$(nproc)" \
+            -v hz="$(getconf CLK_TCK)" -v page="$(getconf PAGESIZE)" -v memkb="$memkb" '
+            $0 == "--" { second = 1; next }
+            !second { t[$1] = $2; next }
+            # lewati thread kernel (kworker dll., RSS 0) dan sampler monitor ini sendiri
+            ($1 in t) && $1 != me && $1 != parent && $3 > 0 && $4 !~ /^fr-sysmon/ {
+                dt = up1 - up0; if (dt <= 0) dt = 1
+                cpu = ($2 - t[$1]) / hz / dt / ncpu * 100; if (cpu < 0) cpu = 0
+                mem = $3 * page / 1024 / memkb * 100
+                printf "%.3f\t%.3f\t%s\n", cpu, mem, $4 }' |
+        sort -t "$(printf '\t')" -k1,1gr -k2,2gr | head -5 |
+        awk -F'\t' '{ printf "PROC %s|%.1f|%.1f\n", $3, $1, $2 }'
     ;;
 info)
     m=$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2- | sed 's/^ *//; s/ with .*//; s/ [0-9]*-Core Processor//')

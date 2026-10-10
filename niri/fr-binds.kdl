@@ -14,6 +14,9 @@ binds {
 // pencatat riwayat clipboard (satu proses wl-paste kecil, idle saat tidak ada salinan baru)
 spawn-at-startup "sh" "-c" "$HOME/.local/bin/fr-clip watch"
 
+// dock bawah: hanya jalan kalau dinyalakan (panel kontrol → Tema → Dock bawah, atau fr-dock on)
+spawn-at-startup "sh" "-c" "$HOME/.local/bin/fr-dock autostart"
+
 // terminal scratchpad: melayang di tengah
 window-rule {
     match app-id="^fr-scratch$"

@@ -5,7 +5,7 @@ pragma ComponentBehavior: Bound
 //   fr-toggle fr-sysmon
 // Data: ~/.local/bin/fr-sysmon-sample
 //   stream → satu proses yang hidup selama widget terbuka (1 sampel/dtk, tanpa fork)
-//   slow   → df + ps tiap 5 dtk
+//   slow   → df + proses teratas (beban 1 detik terakhir) tiap 5 dtk
 
 import QtQuick
 import Quickshell
