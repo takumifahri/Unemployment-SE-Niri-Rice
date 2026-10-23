@@ -1,0 +1,30 @@
+#!/bin/sh
+# fr-lockpower — tombol daya di lockscreen (dipanggil onclick dari hyprlock)
+#
+#   fr-lockpower suspend            langsung tidur
+#   fr-lockpower reboot|poweroff    klik pertama minta konfirmasi, klik kedua (dalam 4 detik) jalan
+#   fr-lockpower hint               teks konfirmasi yang sedang menunggu (kosong kalau tidak ada)
+#
+# Sama seperti panel kontrol: aksi yang menutup semua aplikasi butuh dua klik.
+S="${XDG_RUNTIME_DIR:-/tmp}/fr-lockpower"
+now=$(date +%s)
+
+pending() {   # $1 = aksi; benar kalau aksi itu sedang menunggu klik kedua
+    [ -f "$S" ] || return 1
+    read -r a t < "$S" || return 1
+    [ "$a" = "$1" ] && [ $((now - t)) -le 4 ]
+}
+
+case "${1:-}" in
+suspend)
+    rm -f "$S"
+    exec systemctl suspend ;;
+reboot|poweroff)
+    if pending "$1"; then rm -f "$S"; exec systemctl "$1"; fi
+    echo "$1 $now" > "$S" ;;
+hint)
+    if pending poweroff; then echo "Klik lagi untuk mematikan"
+    elif pending reboot; then echo "Klik lagi untuk mulai ulang"
+    else echo; fi ;;
+*) sed -n '2,7p' "$0"; exit 1 ;;
+esac

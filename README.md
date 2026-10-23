@@ -225,7 +225,8 @@ di-cache supaya cepat.
   - *Tengah* — semua di tengah dalam satu kartu.
 
 Lockscreen menampilkan foto profil dan nama tampilan (atur di Panel kontrol → Profil), lagu yang
-sedang diputar beserta tombol putar/lewati, serta status baterai dan Wi-Fi.
+sedang diputar beserta tombol putar/lewati, status baterai dan Wi-Fi, serta tombol daya di kanan
+atas (tidur, mulai ulang, matikan). Seperti di panel kontrol, mulai ulang dan matikan butuh dua klik.
 
 ### Layar login
 
@@ -342,6 +343,7 @@ daftar keybind niri: **`Mod+Shift+/`**.
 | `fr-theme <nama>` / `fr-theme list` | ganti tema / daftar tema |
 | `fr-lockstyle editorial\|center` | gaya lockscreen |
 | `fr-sddm sync\|test\|video <file>\|video off` | layar login SDDM |
+| `fr-lockpower suspend\|reboot\|poweroff` | tombol daya lockscreen (reboot/poweroff: dua kali dalam 4 detik) |
 | `fr-power power-saver\|balanced\|performance` | mode daya |
 | `fr-charge set 80` | batas pengisian baterai (40–100) |
 | `fr-hotspot on\|off\|check\|qr` | hotspot |
@@ -384,7 +386,8 @@ untuk file yang belum ada. Config bawaan yang dibuat niri saat pertama jalan dib
 | Batas pengisian tidak muncul | laptop tidak punya `charge_control_end_threshold` di `/sys/class/power_supply/BAT*/` |
 | Menu fuzzel terlalu besar/kecil | ubah `size=` di `~/.config/fuzzel/fuzzel.ini` |
 | Lockscreen tidak berubah | `fr-lockstyle editorial` (atau `center`) |
-| Layar login masih tema lama | `fr-sddm` → lihat baris "aktif". Kalau `/etc/sddm.conf` berisi `Current=…`, hapus baris itu (file itu menang atas `sddm.conf.d`) |
+| Layar login masih tema lama | `fr-sddm` → lihat baris "aktif". Kalau `/etc/sddm.conf` berisi `Current=…`, hapus baris itu (file itu menang atas `sddm.conf.d`), lalu reboot. Logout saja tidak cukup: SDDM membaca config hanya saat menyala |
+| Keyboard virtual muncul di layar login | sisa tema lain: matikan `InputMethod=qtvirtualkeyboard` dan `QT_IM_MODULE=qtvirtualkeyboard` di `/etc/sddm.conf` (`./update.sh` melakukannya otomatis) |
 | Layar login tidak ikut ganti tema | `fr-sddm sync`. Kalau minta password, helper belum terpasang: jalankan `./update.sh` |
 | Cuaca salah kota | isi nama kota di `~/.config/fr-profile/city` |
 | Dock tidak muncul | pastikan menyala (`fr-dock status`), lalu tahan kursor di tepi bawah tengah layar sebentar |

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FR Navy v19: layar login SDDM ikut tema, foto, dan wallpaper lockscreen (fr-sddm); v18: dock bawah auto-hide (fr-dock); v17: riwayat clipboard + emoji, indikator hotspot di waybar, repo Git; v16.2: hotspot lewat hostapd (jalan dengan iwd); v16: hotspot dari Wi-Fi laptop (fr-hotspot); v15: batas pengisian baterai (fr-charge); v14: pilih area QR + pembaca zxing; Wi-Fi via QR; alat (screenshot, rekam, warna, scratchpad, kalender); mode daya + profil; optimasi performa; palet tema; lockscreen baru + wallpaper lock terpisah + monitor sistem; control center lengkap + popup wifi/volume/brightness, sysinfo waybar, launcher ber-grup
+# FR Navy v19.1: tombol daya di lockscreen (fr-lockpower), cek /etc/sddm.conf; v19: layar login SDDM ikut tema, foto, dan wallpaper lockscreen (fr-sddm); v18: dock bawah auto-hide (fr-dock); v17: riwayat clipboard + emoji, indikator hotspot di waybar, repo Git; v16.2: hotspot lewat hostapd (jalan dengan iwd); v16: hotspot dari Wi-Fi laptop (fr-hotspot); v15: batas pengisian baterai (fr-charge); v14: pilih area QR + pembaca zxing; Wi-Fi via QR; alat (screenshot, rekam, warna, scratchpad, kalender); mode daya + profil; optimasi performa; palet tema; lockscreen baru + wallpaper lock terpisah + monitor sistem; control center lengkap + popup wifi/volume/brightness, sysinfo waybar, launcher ber-grup
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
@@ -43,7 +43,7 @@ fi
 cp "$HERE/theme/themes.json" "$CFG/fr-theme/"
 saved_theme=$(cat "$CFG/fr-theme/current" 2>/dev/null || echo navy)
 echo navy > "$CFG/fr-theme/current"
-install -m755 "$HERE/bin/fr-toggle" "$HERE/bin/fr-sysmon-sample" "$HERE/bin/fr-theme" "$HERE/bin/fr-thumbs" "$HERE/bin/fr-power" "$HERE/bin/fr-avatar" "$HERE/bin/fr-media" "$HERE/bin/fr-lockstyle" "$HERE/bin/fr-shot" "$HERE/bin/fr-pick" "$HERE/bin/fr-scratch" "$HERE/bin/fr-rec" "$HERE/bin/fr-weather" "$HERE/bin/fr-wifiqr" "$HERE/bin/fr-charge" "$HERE/bin/fr-hotspot" "$HERE/bin/fr-hotspot-bar" "$HERE/bin/fr-clip" "$HERE/bin/fr-emoji" "$HERE/bin/fr-dock" "$HERE/bin/fr-sddm" "$HOME/.local/bin/"
+install -m755 "$HERE/bin/fr-toggle" "$HERE/bin/fr-sysmon-sample" "$HERE/bin/fr-theme" "$HERE/bin/fr-thumbs" "$HERE/bin/fr-power" "$HERE/bin/fr-avatar" "$HERE/bin/fr-media" "$HERE/bin/fr-lockstyle" "$HERE/bin/fr-shot" "$HERE/bin/fr-pick" "$HERE/bin/fr-scratch" "$HERE/bin/fr-rec" "$HERE/bin/fr-weather" "$HERE/bin/fr-wifiqr" "$HERE/bin/fr-charge" "$HERE/bin/fr-hotspot" "$HERE/bin/fr-hotspot-bar" "$HERE/bin/fr-clip" "$HERE/bin/fr-emoji" "$HERE/bin/fr-dock" "$HERE/bin/fr-sddm" "$HERE/bin/fr-lockpower" "$HOME/.local/bin/"
 cp "$HERE/waybar/config.jsonc" "$HERE/waybar/style.css" "$CFG/waybar/"
 cp "$HERE/fuzzel/fuzzel.ini" "$CFG/fuzzel/"
 # lockscreen: file gaya selalu diperbarui; hyprlock.conf cuma menunjuk gaya pilihanmu
@@ -130,8 +130,22 @@ if command -v sddm >/dev/null; then
     fi
     if [[ $("$HOME/.local/bin/fr-sddm" show | sed -n 's/^aktif *: //p') != fr-navy ]]; then
       printf '[Theme]\nCurrent=fr-navy\n' | sudo tee /etc/sddm.conf.d/zz-fr.conf >/dev/null
+      # /etc/sddm.conf menang atas sddm.conf.d: tema lama di sana harus dimatikan juga
+      if grep -qsE '^[[:space:]]*Current[[:space:]]*=' /etc/sddm.conf; then
+        sudo cp -n /etc/sddm.conf /etc/sddm.conf.bak-fr
+        sudo sed -i -E 's/^([[:space:]]*Current[[:space:]]*=.*)$/# \1   (dimatikan update.sh FR)/' /etc/sddm.conf
+        echo "  /etc/sddm.conf: baris Current= tema lama dimatikan (backup: /etc/sddm.conf.bak-fr)"
+      fi
       echo "  SDDM sekarang memakai tema fr-navy (/etc/sddm.conf.d/zz-fr.conf)"
     fi
+    # sisa tema lain (mis. silent): keyboard virtual muncul begitu kolom password fokus
+    for f in /etc/sddm.conf /etc/sddm.conf.d/*.conf; do
+      [[ -f $f && $f != */zz-fr.conf ]] || continue
+      grep -qsE '^[[:space:]]*(InputMethod|GreeterEnvironment)[[:space:]]*=.*qtvirtualkeyboard' "$f" || continue
+      sudo cp -n "$f" "$f.bak-fr"
+      sudo sed -i -E 's/^([[:space:]]*(InputMethod|GreeterEnvironment)[[:space:]]*=.*qtvirtualkeyboard.*)$/# \1   (dimatikan update.sh FR)/' "$f"
+      echo "  $f: keyboard virtual dimatikan (backup: $f.bak-fr)"
+    done
   fi
 fi
 
