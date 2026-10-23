@@ -1,0 +1,125 @@
+#!/bin/sh
+# fr-sddm-apply — helper root untuk fr-sddm (dipasang ke /usr/local/bin oleh update.sh,
+# boleh dijalankan tanpa password lewat /etc/sudoers.d/fr-sddm). Cuma bisa satu hal:
+#
+#   sudo fr-sddm-apply
+#
+# menyalin palet fr-theme, nama & foto profil, wallpaper lockscreen (dan video login kalau
+# diatur lewat `fr-sddm video`) milik user pemanggil ke tema SDDM di /usr/share/sddm/themes/fr-navy.
+# Semua file user dibaca dengan hak user itu sendiri (runuser), jadi helper ini tidak bisa
+# dipakai untuk membaca file yang tidak boleh dibaca user tersebut.
+set -eu
+PATH=/usr/bin:/bin
+umask 022
+DEST=/usr/share/sddm/themes/fr-navy
+FACES=/usr/share/sddm/faces
+
+U=${SUDO_USER:-}
+[ -n "$U" ] && [ "$U" != root ] || { echo "Jalankan lewat sudo dari akunmu sendiri." >&2; exit 1; }
+[ -f "$DEST/Main.qml" ] || { echo "Tema SDDM belum terpasang di $DEST (jalankan ./update.sh)." >&2; exit 1; }
+H=$(getent passwd "$U" | cut -d: -f6)
+C="$H/.config"
+T=$(mktemp -d)
+trap 'rm -rf "$T"' EXIT
+
+as() { runuser -u "$U" -- "$@"; }
+grab() { as cat "$1" > "$2" 2>/dev/null || : > "$2"; }   # $1 sumber (dibaca sebagai user), $2 tujuan
+
+grab "$C/fr-theme/themes.json" "$T/themes.json"
+grab "$C/fr-theme/current"     "$T/current"
+grab "$C/fr-profile/name"      "$T/name"
+grab "$C/hypr/lock.png"        "$T/lock"
+grab "$H/.face"                "$T/face"
+grab "$C/fr-sddm/video"        "$T/videopath"
+vid=$(head -n1 "$T/videopath")
+if [ -n "$vid" ]; then grab "$vid" "$T/video"; else : > "$T/video"; fi
+
+# jenis file dari isinya (bukan dari nama), jadi cuma gambar/video beneran yang disalin
+ext() {
+    [ -s "$1" ] || return 0
+    case $(file -b --mime-type "$1") in
+        image/png) echo png ;; image/jpeg) echo jpg ;; image/webp) echo webp ;;
+        video/mp4) echo mp4 ;; video/webm) echo webm ;; video/x-matroska) echo mkv ;;
+    esac
+}
+
+mkdir -p "$DEST/backgrounds"
+put() {   # $1 file sementara, $2 nama dasar di backgrounds/, $3 ekstensi → cetak path relatif
+    if ! cmp -s "$1" "$DEST/backgrounds/$2.$3"; then
+        rm -f "$DEST/backgrounds/$2".*
+        install -m644 "$1" "$DEST/backgrounds/$2.$3"
+    fi
+    echo "backgrounds/$2.$3"
+}
+
+lock=""; e=$(ext "$T/lock")
+case $e in png|jpg|webp) lock=$(put "$T/lock" lock "$e") ;; esac
+
+avatar=""; e=$(ext "$T/face")
+case $e in
+    png|jpg|webp)
+        avatar=$(put "$T/face" avatar "$e")
+        # cadangan buat tema SDDM lain: <user>.face.icon di FacesDir
+        mkdir -p "$FACES" && install -m644 "$T/face" "$FACES/$U.face.icon" ;;
+esac
+
+video=""; e=$(ext "$T/video")
+case $e in mp4|webm|mkv) video=$(put "$T/video" video "$e") ;; esac
+[ -n "$video" ] || rm -f "$DEST"/backgrounds/video.*
+
+python3 - "$DEST/theme.conf" "$T" "$U" "$lock" "$avatar" "$video" > "$T/theme.conf" <<'PY'
+import json, re, sys
+conf, tmp, user, lock, avatar, video = sys.argv[1:7]
+lines = open(conf, encoding="utf-8").read().splitlines() if conf else []
+
+def read(name):
+    try:
+        return open(f"{tmp}/{name}", encoding="utf-8", errors="replace").read()
+    except OSError:
+        return ""
+
+up = {}
+cur = read("current").strip() or "navy"
+cur = cur if re.fullmatch(r"[a-z0-9_-]{1,32}", cur) else "navy"
+try:
+    colors = json.loads(read("themes.json"))[cur]["colors"]
+    for k in ("bg", "surface", "surface2", "border", "text", "muted", "accent", "accent2", "warn", "urgent"):
+        v = str(colors.get(k, ""))
+        if re.fullmatch(r"#[0-9A-Fa-f]{6}", v):
+            up[k] = v.upper()
+    up["theme"] = cur
+except (ValueError, KeyError, TypeError):
+    pass   # themes.json tidak ada/rusak: warna lama dipertahankan
+
+name = re.sub(r"\s+", " ", re.sub(r'[\x00-\x1f"\\]', "", read("name"))).strip()[:40]
+up["displayUser"] = user
+up["displayName"] = name
+up["avatar"] = avatar
+if lock:
+    up["background"] = lock
+up["video"] = video
+up["backgroundType"] = "video" if video else "image"
+
+seen = set()
+out = []
+for ln in lines:
+    m = re.match(r"\s*([A-Za-z0-9_]+)\s*=", ln)
+    if m and m.group(1) in up:
+        k = m.group(1)
+        out.append(f'{k}="{up[k]}"'); seen.add(k)
+    else:
+        out.append(ln)
+if not any(l.strip() == "[General]" for l in out):
+    out.insert(0, "[General]")
+for k, v in up.items():
+    if k not in seen:
+        out.append(f'{k}="{v}"')
+print("\n".join(out))
+PY
+install -m644 "$T/theme.conf" "$DEST/theme.conf"
+
+printf 'Layar login: tema %s' "$(sed -n 's/^theme="\(.*\)"/\1/p' "$DEST/theme.conf")"
+[ -n "$lock" ] && printf ', wallpaper lockscreen'
+[ -n "$avatar" ] && printf ', foto profil'
+[ -n "$video" ] && printf ', video'
+echo

@@ -7,7 +7,8 @@
 
 Cara kerja: nilai warna palet LAMA di tiap file config diganti dengan palet BARU
 (hex #RRGGBB, hex polos di fuzzel, dan "r, g, b" di rgba()). Jadi file yang sudah
-kamu ubah sendiri tetap aman, cuma warnanya yang berganti.
+kamu ubah sendiri tetap aman, cuma warnanya yang berganti. Layar login SDDM ikut
+lewat `fr-sddm sync`.
 """
 import json, os, re, subprocess, sys
 
@@ -98,6 +99,12 @@ def main():
             changed.append(rel)
 
     open(CURRENT, "w").write(arg + "\n")
+
+    # layar login SDDM ikut berganti (fr-sddm, kalau terpasang); jalan di belakang biar nggak nunggu
+    sddm = os.path.join(HOME, ".local", "bin", "fr-sddm")
+    if os.access(sddm, os.X_OK):
+        subprocess.Popen([sddm, "sync", "-q"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
 
     # muat ulang yang sedang jalan (niri reload sendiri saat file berubah)
     for cmd in (["pkill", "-SIGUSR2", "-x", "waybar"], ["swaync-client", "-rs"]):

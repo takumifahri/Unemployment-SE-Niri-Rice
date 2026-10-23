@@ -743,20 +743,22 @@ ShellRoot {
         autoPower = !autoPower;
         exec(["systemctl", "--user", autoPower ? "enable" : "disable", "--now", "fr-power-auto.service"]);
     }
+    // layar login SDDM ikut wallpaper lockscreen (fr-sddm, kalau terpasang)
+    readonly property string syncLogin: '; f="$HOME/.local/bin/fr-sddm"; [ -x "$f" ] && "$f" sync -q'
     function setWallpaper(path) {
         currentWall = path;
         if (lockFollows) lockWall = path;
-        exec(["sh", "-c", 'ln -sf "$1" "$2" && awww img "$1" --transition-type grow --transition-pos top-right --transition-duration 1', "sh", path, wallLink]);
+        exec(["sh", "-c", 'ln -sf "$1" "$2" && awww img "$1" --transition-type grow --transition-pos top-right --transition-duration 1' + (lockFollows ? syncLogin : ""), "sh", path, wallLink]);
     }
     readonly property string thumbDir: home + "/.cache/fr-thumbs"
     function thumbOf(path) { return thumbDir + "/" + path.split("/").pop() + ".jpg"; }
     function setLockWallpaper(path) {
         lockWall = path; lockFollows = false;
-        exec(["ln", "-sf", path, lockLink]);
+        exec(["sh", "-c", 'ln -sf "$1" "$2"' + syncLogin, "sh", path, lockLink]);
     }
     function setLockFollow(on) {
         lockFollows = on;
-        if (on) { exec(["ln", "-sf", wallLink, lockLink]); lockWall = currentWall; }
+        if (on) { exec(["sh", "-c", 'ln -sf "$1" "$2"' + syncLogin, "sh", wallLink, lockLink]); lockWall = currentWall; }
     }
     // pasang tema lalu buka ulang panel ini (supaya panelnya ikut berganti warna)
     function applyTheme(id) {
@@ -2802,7 +2804,7 @@ ShellRoot {
                         Text {
                             width: parent.width
                             wrapMode: Text.Wrap
-                            text: "Mengganti warna waybar, notifikasi, launcher, panel, lockscreen, dan focus ring niri sekaligus."
+                            text: "Mengganti warna waybar, notifikasi, launcher, panel, lockscreen, layar login, dan focus ring niri sekaligus."
                             color: root.cMuted
                             font { family: root.fUi; pixelSize: 12 }
                         }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FR Navy v18: dock bawah auto-hide (fr-dock); v17: riwayat clipboard + emoji, indikator hotspot di waybar, repo Git; v16.2: hotspot lewat hostapd (jalan dengan iwd); v16: hotspot dari Wi-Fi laptop (fr-hotspot); v15: batas pengisian baterai (fr-charge); v14: pilih area QR + pembaca zxing; Wi-Fi via QR; alat (screenshot, rekam, warna, scratchpad, kalender); mode daya + profil; optimasi performa; palet tema; lockscreen baru + wallpaper lock terpisah + monitor sistem; control center lengkap + popup wifi/volume/brightness, sysinfo waybar, launcher ber-grup
+# FR Navy v19: layar login SDDM ikut tema, foto, dan wallpaper lockscreen (fr-sddm); v18: dock bawah auto-hide (fr-dock); v17: riwayat clipboard + emoji, indikator hotspot di waybar, repo Git; v16.2: hotspot lewat hostapd (jalan dengan iwd); v16: hotspot dari Wi-Fi laptop (fr-hotspot); v15: batas pengisian baterai (fr-charge); v14: pilih area QR + pembaca zxing; Wi-Fi via QR; alat (screenshot, rekam, warna, scratchpad, kalender); mode daya + profil; optimasi performa; palet tema; lockscreen baru + wallpaper lock terpisah + monitor sistem; control center lengkap + popup wifi/volume/brightness, sysinfo waybar, launcher ber-grup
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
@@ -43,7 +43,7 @@ fi
 cp "$HERE/theme/themes.json" "$CFG/fr-theme/"
 saved_theme=$(cat "$CFG/fr-theme/current" 2>/dev/null || echo navy)
 echo navy > "$CFG/fr-theme/current"
-install -m755 "$HERE/bin/fr-toggle" "$HERE/bin/fr-sysmon-sample" "$HERE/bin/fr-theme" "$HERE/bin/fr-thumbs" "$HERE/bin/fr-power" "$HERE/bin/fr-avatar" "$HERE/bin/fr-media" "$HERE/bin/fr-lockstyle" "$HERE/bin/fr-shot" "$HERE/bin/fr-pick" "$HERE/bin/fr-scratch" "$HERE/bin/fr-rec" "$HERE/bin/fr-weather" "$HERE/bin/fr-wifiqr" "$HERE/bin/fr-charge" "$HERE/bin/fr-hotspot" "$HERE/bin/fr-hotspot-bar" "$HERE/bin/fr-clip" "$HERE/bin/fr-emoji" "$HERE/bin/fr-dock" "$HOME/.local/bin/"
+install -m755 "$HERE/bin/fr-toggle" "$HERE/bin/fr-sysmon-sample" "$HERE/bin/fr-theme" "$HERE/bin/fr-thumbs" "$HERE/bin/fr-power" "$HERE/bin/fr-avatar" "$HERE/bin/fr-media" "$HERE/bin/fr-lockstyle" "$HERE/bin/fr-shot" "$HERE/bin/fr-pick" "$HERE/bin/fr-scratch" "$HERE/bin/fr-rec" "$HERE/bin/fr-weather" "$HERE/bin/fr-wifiqr" "$HERE/bin/fr-charge" "$HERE/bin/fr-hotspot" "$HERE/bin/fr-hotspot-bar" "$HERE/bin/fr-clip" "$HERE/bin/fr-emoji" "$HERE/bin/fr-dock" "$HERE/bin/fr-sddm" "$HOME/.local/bin/"
 cp "$HERE/waybar/config.jsonc" "$HERE/waybar/style.css" "$CFG/waybar/"
 cp "$HERE/fuzzel/fuzzel.ini" "$CFG/fuzzel/"
 # lockscreen: file gaya selalu diperbarui; hyprlock.conf cuma menunjuk gaya pilihanmu
@@ -105,6 +105,36 @@ fi
 # versi awal hotspot memakai profil NetworkManager; sekarang hostapd langsung
 nmcli connection delete fr-hotspot >/dev/null 2>&1 || true
 
+# layar login SDDM: tema fr-navy (wallpaper lockscreen + panel kaca) + helper root kecil yang cuma bisa
+# menyalin warna tema, foto, nama, dan wallpaper lockscreen milikmu ke tema itu (tanpa password)
+SDT=/usr/share/sddm/themes/fr-navy
+if command -v sddm >/dev/null; then
+  if [[ -d $SDT ]]; then a=y; else read -rp "Pasang layar login SDDM bergaya FR? [y/N] " a; fi
+  if [[ $a =~ ^[Yy]$ ]]; then
+    echo "Memasang tema login SDDM (butuh sudo)…"
+    sudo mkdir -p "$SDT/backgrounds" /etc/sddm.conf.d
+    sudo install -m644 "$HERE"/sddm/fr-navy/{Main.qml,FrButton.qml,FrCombo.qml,VideoBg.qml,metadata.desktop} "$SDT/"
+    sudo install -m644 "$HERE/docs/sddm.png" "$SDT/preview.png"
+    [[ -f $SDT/theme.conf ]] || sudo install -m644 "$HERE/sddm/fr-navy/theme.conf" "$SDT/"
+    AP=/usr/local/bin/fr-sddm-apply
+    if ! cmp -s "$HERE/bin/fr-sddm-apply" "$AP" || ! sudo -n -l "$AP" >/dev/null 2>&1; then
+      tmp=$(mktemp)
+      echo "$USER ALL=(root) NOPASSWD: $AP" > "$tmp"
+      if sudo install -o root -g root -m755 "$HERE/bin/fr-sddm-apply" "$AP" && sudo visudo -cf "$tmp" >/dev/null &&
+         sudo install -o root -g root -m440 "$tmp" /etc/sudoers.d/fr-sddm; then
+        echo "  helper SDDM terpasang"
+      else
+        echo "  gagal memasang helper SDDM (jalankan 'fr-sddm sync' manual setelah ganti tema)"
+      fi
+      rm -f "$tmp"
+    fi
+    if [[ $("$HOME/.local/bin/fr-sddm" show | sed -n 's/^aktif *: //p') != fr-navy ]]; then
+      printf '[Theme]\nCurrent=fr-navy\n' | sudo tee /etc/sddm.conf.d/zz-fr.conf >/dev/null
+      echo "  SDDM sekarang memakai tema fr-navy (/etc/sddm.conf.d/zz-fr.conf)"
+    fi
+  fi
+fi
+
 # batas pengisian baterai: butuh sysfs charge_control_end_threshold + izin tulis lewat udev
 for t in /sys/class/power_supply/BAT*/charge_control_end_threshold; do
   [[ -e $t ]] || continue
@@ -155,6 +185,8 @@ command -v gpu-screen-recorder >/dev/null || command -v wf-recorder >/dev/null |
 (nohup "$HOME/.local/bin/fr-thumbs" >/dev/null 2>&1 &)
 
 [[ $saved_theme != navy ]] && "$HOME/.local/bin/fr-theme" "$saved_theme" || true
+# fr-theme di atas sudah memicu sinkron layar login; tema navy perlu dipicu sendiri
+[[ $saved_theme == navy && -d $SDT ]] && "$HOME/.local/bin/fr-sddm" sync -q || true
 
 pkill waybar || true
 (waybar >/dev/null 2>&1 & disown)

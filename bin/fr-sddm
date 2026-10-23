@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# fr-sddm — layar login SDDM ikut rice FR
+#
+#   fr-sddm                 tampilkan status
+#   fr-sddm sync            samakan warna tema, nama, foto, dan wallpaper lockscreen ke layar login
+#   fr-sddm video <file>    pakai video sebagai background login  (fr-sddm video off → gambar lagi)
+#   fr-sddm test            buka layar login di jendela (mode tes, aman, tidak login beneran)
+#
+# `sync` dipanggil otomatis oleh fr-theme, fr-avatar, dan panel kontrol (wallpaper lockscreen).
+set -u
+HELPER=/usr/local/bin/fr-sddm-apply
+DEST=/usr/share/sddm/themes/fr-navy
+CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
+STATE="$CFG/fr-sddm"
+
+active_theme() {
+    # /etc/sddm.conf menang atas sddm.conf.d; di dalam sddm.conf.d file terakhir (urut abjad) yang menang
+    local f t=""
+    for f in /etc/sddm.conf.d/*.conf /etc/sddm.conf; do
+        [ -r "$f" ] || continue
+        local v; v=$(sed -n 's/^[[:space:]]*Current[[:space:]]*=[[:space:]]*//p' "$f" | tail -n1)
+        [ -n "$v" ] && t=$v
+    done
+    echo "${t:-(bawaan)}"
+}
+
+sync_now() {   # $1 = -q → diam, tanpa minta password (dipakai skrip lain)
+    [ -x "$HELPER" ] || { [ "${1:-}" = -q ] || echo "Helper belum terpasang. Jalankan ./update.sh dari repo rice." >&2; return 1; }
+    if [ "${1:-}" = -q ]; then
+        sudo -n "$HELPER" >/dev/null 2>&1
+    else
+        sudo "$HELPER"
+    fi
+}
+
+case "${1:-show}" in
+show)
+    if [ -f "$DEST/Main.qml" ]; then echo "tema   : terpasang ($DEST)"; else echo "tema   : belum terpasang (./update.sh)"; fi
+    echo "aktif  : $(active_theme)"
+    if sudo -n -l "$HELPER" >/dev/null 2>&1; then echo "sync   : otomatis (tanpa password)"; else echo "sync   : manual (fr-sddm sync)"; fi
+    if [ -f "$DEST/theme.conf" ]; then
+        get() { sed -n "s/^$1=\"\\(.*\\)\"/\\1/p" "$DEST/theme.conf"; }
+        echo "warna  : $(get theme)"
+        echo "nama   : $(get displayName)"
+        echo "latar  : $(get backgroundType)"
+    fi
+    ;;
+sync)
+    sync_now "${2:-}"
+    ;;
+video)
+    arg="${2:-}"
+    mkdir -p "$STATE"
+    if [ "$arg" = off ] || [ "$arg" = "" ]; then
+        rm -f "$STATE/video"
+        echo "Background login: gambar (wallpaper lockscreen)"
+    else
+        [ -f "$arg" ] || { echo "File tidak ditemukan: $arg" >&2; exit 1; }
+        if ! pacman -Q qt6-multimedia qt6-multimedia-ffmpeg >/dev/null 2>&1; then
+            echo "Butuh qt6-multimedia dan qt6-multimedia-ffmpeg:  sudo pacman -S qt6-multimedia qt6-multimedia-ffmpeg" >&2
+            exit 1
+        fi
+        realpath "$arg" > "$STATE/video"
+        echo "Background login: video $(basename "$arg")"
+    fi
+    sync_now
+    ;;
+test)
+    g=$(command -v sddm-greeter-qt6 || command -v sddm-greeter) || { echo "sddm belum terpasang" >&2; exit 1; }
+    exec "$g" --test-mode --theme "$DEST"
+    ;;
+*) sed -n '2,9p' "$0"; exit 1 ;;
+esac

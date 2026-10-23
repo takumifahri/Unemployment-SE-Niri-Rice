@@ -31,9 +31,16 @@ crop() {   # $1 = sumber, $2 = tujuan png
     fi
 }
 
+sync_login() {   # layar login SDDM ikut (fr-sddm, kalau terpasang)
+    local f="$HOME/.local/bin/fr-sddm"
+    [ -x "$f" ] && ("$f" sync -q >/dev/null 2>&1 &)
+    return 0
+}
+
 finish() {   # pasang hasil + salinan .face.icon (dibaca SDDM/KDE)
     mv "$1" "$FACE"
     cp "$FACE" "$HOME/.face.icon" 2>/dev/null
+    sync_login
     echo "Foto profil disimpan di $FACE"
 }
 
@@ -88,6 +95,7 @@ default)
 name)
     n=$(printf '%s' "${2:-}" | tr -d '\n<>&' | cut -c1-40)
     if [ -n "$n" ]; then printf '%s\n' "$n" > "$PROF/name"; else rm -f "$PROF/name"; fi
+    sync_login
     echo "Nama tampilan: $(display_name)"
     ;;
 show)

@@ -18,7 +18,7 @@ di latar belakang**.
 - [Fitur](#fitur)
   - [Waybar](#waybar) · [Panel kontrol](#panel-kontrol) · [Launcher](#launcher) · [Monitor sistem](#monitor-sistem)
   - [Baterai](#baterai) · [Suara & layar](#suara--layar) · [Kalender & cuaca](#kalender--cuaca)
-  - [Wi-Fi, QR & hotspot](#wi-fi-qr--hotspot) · [Wallpaper & lockscreen](#wallpaper--lockscreen)
+  - [Wi-Fi, QR & hotspot](#wi-fi-qr--hotspot) · [Wallpaper & lockscreen](#wallpaper--lockscreen) · [Layar login](#layar-login)
   - [Tema](#tema) · [Mode daya](#mode-daya) · [Clipboard & emoji](#clipboard--emoji) · [Dock](#dock) · [Alat](#alat)
 - [Keybind](#keybind)
 - [Perintah](#perintah)
@@ -227,11 +227,31 @@ di-cache supaya cepat.
 Lockscreen menampilkan foto profil dan nama tampilan (atur di Panel kontrol → Profil), lagu yang
 sedang diputar beserta tombol putar/lewati, serta status baterai dan Wi-Fi.
 
+### Layar login
+
+<img src="docs/sddm.png" width="480" align="center">
+
+Tema SDDM `fr-navy` memakai wallpaper lockscreen (diblur dan diredupkan seperti hyprlock) sebagai
+latar: jam besar di kiri bawah, panel kaca setinggi layar di kanan berisi foto, sapaan sesuai jam,
+kolom password, pilihan sesi, dan tombol daya. Layar login ikut berubah sendiri saat kamu:
+
+- ganti tema (`fr-theme` atau panel kontrol → Tema),
+- ganti foto atau nama profil (`fr-avatar` atau panel kontrol → Profil),
+- ganti wallpaper lockscreen (panel kontrol → Wallpaper → Lockscreen).
+
+`update.sh` menawarkan pemasangannya kalau `sddm` terpasang. Penyalinan ke `/usr/share/sddm`
+lewat helper root kecil `fr-sddm-apply` yang cuma bisa menyalin file milikmu ke tema itu, jadi
+tidak perlu password tiap ganti tema.
+
+Mau background video? `fr-sddm video ~/Videos/login.mp4` (butuh `qt6-multimedia` dan
+`qt6-multimedia-ffmpeg`), dan `fr-sddm video off` untuk kembali ke gambar. Cek hasilnya tanpa
+logout dengan `fr-sddm test`.
+
 ### Tema
 
 Panel kontrol → **Tema**, atau `fr-theme <nama>`. Satu perintah mengganti warna **semua**
 komponen sekaligus: waybar, notifikasi, fuzzel, panel, launcher, monitor sistem, lockscreen, focus
-ring niri, dan satty.
+ring niri, satty, dan layar login SDDM.
 
 | Nama | Nuansa |
 |---|---|
@@ -321,6 +341,7 @@ daftar keybind niri: **`Mod+Shift+/`**.
 | `fr-toggle <panel> [halaman]` | buka/tutup panel (`radial-launcher`, `fr-control`, `fr-sysmon`; halaman: `wifi`, `volume`, `brightness`, `battery`, `calendar`) |
 | `fr-theme <nama>` / `fr-theme list` | ganti tema / daftar tema |
 | `fr-lockstyle editorial\|center` | gaya lockscreen |
+| `fr-sddm sync\|test\|video <file>\|video off` | layar login SDDM |
 | `fr-power power-saver\|balanced\|performance` | mode daya |
 | `fr-charge set 80` | batas pengisian baterai (40–100) |
 | `fr-hotspot on\|off\|check\|qr` | hotspot |
@@ -363,6 +384,8 @@ untuk file yang belum ada. Config bawaan yang dibuat niri saat pertama jalan dib
 | Batas pengisian tidak muncul | laptop tidak punya `charge_control_end_threshold` di `/sys/class/power_supply/BAT*/` |
 | Menu fuzzel terlalu besar/kecil | ubah `size=` di `~/.config/fuzzel/fuzzel.ini` |
 | Lockscreen tidak berubah | `fr-lockstyle editorial` (atau `center`) |
+| Layar login masih tema lama | `fr-sddm` → lihat baris "aktif". Kalau `/etc/sddm.conf` berisi `Current=…`, hapus baris itu (file itu menang atas `sddm.conf.d`) |
+| Layar login tidak ikut ganti tema | `fr-sddm sync`. Kalau minta password, helper belum terpasang: jalankan `./update.sh` |
 | Cuaca salah kota | isi nama kota di `~/.config/fr-profile/city` |
 | Dock tidak muncul | pastikan menyala (`fr-dock status`), lalu tahan kursor di tepi bawah tengah layar sebentar |
 | Lupa keybind | `Mod+Shift+/` |
@@ -377,6 +400,7 @@ control-center/   panel kontrol + popup waybar (Quickshell)
 radial-launcher/  launcher pie
 sysmon/           monitor sistem
 dock/             dock bawah auto-hide
+sddm/fr-navy/     tema layar login SDDM (gaya editorial, warna ikut fr-theme)
 wifiqr/           layar pilih area QR
 waybar/  swaync/  fuzzel/  hypr/  satty/     config tiap komponen
 niri/             fr-binds.kdl (di-include otomatis) + rice-snippet.kdl (contoh layout)
