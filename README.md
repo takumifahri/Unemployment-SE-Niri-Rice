@@ -107,6 +107,11 @@ sedang diputar dari Spotify/YouTube/dll.), profil dengan foto, serta baris alat 
 rekam, ambil warna, terminal). Dari panel ini juga bisa membuka halaman wallpaper, monitor,
 tema, profil, dan baterai.
 
+Halaman **Monitor** punya empat mode untuk monitor eksternal: *Laptop saja*, *Mirror* (layar
+laptop tampil sama persis di monitor, cocok untuk presentasi), *Extend*, dan *Monitor saja*.
+niri belum punya mirror bawaan, jadi Mirror memakai `wl-mirror`: jendela fullscreen di monitor
+eksternal yang menampilkan isi layar laptop, dan hanya jalan selama mode itu aktif.
+
 ### Launcher
 
 <img src="docs/desktop-launcher.jpg" width="480" align="center">
@@ -352,6 +357,7 @@ daftar keybind niri: **`Mod+Shift+/`**.
 | `fr-clip [delete\|wipe]` | riwayat clipboard |
 | `fr-emoji` | pemilih emoji |
 | `fr-dock on\|off\|status` | dock bawah |
+| `fr-mirror on\|off\|status` | mirror layar laptop ke monitor eksternal |
 | `fr-shot region\|screen`, `fr-rec toggle`, `fr-pick`, `fr-scratch` | alat |
 
 ---

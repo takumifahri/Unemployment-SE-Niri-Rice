@@ -129,6 +129,8 @@ ShellRoot {
     property string lockStyle: "editorial"
     property bool hasCustomLock: false
     property var outputs: []            // [{name, label, on, internal}]
+    property bool mirrorOn: false       // wl-mirror sedang jalan (fr-mirror)
+    property bool hasWlMirror: true
     property var themes: []             // [{id, name, desc, colors}]
     property string displayName: user
     property string accountName: user
@@ -569,6 +571,7 @@ ShellRoot {
     Process {
         id: outProc
         command: ["niri", "msg", "--json", "outputs"]
+        onRunningChanged: if (running) mirProc.running = true
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
@@ -580,6 +583,17 @@ ShellRoot {
                         internal: /^eDP|^LVDS|^DSI/.test(k)
                     })).sort((a, b) => b.internal - a.internal);
                 } catch (e) { root.outputs = []; }
+            }
+        }
+    }
+
+    Process {
+        id: mirProc
+        command: ["sh", "-c", 'command -v wl-mirror >/dev/null && echo has; pgrep -x wl-mirror >/dev/null && echo on; true']
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.hasWlMirror = this.text.includes("has");
+                root.mirrorOn = this.text.includes("on");
             }
         }
     }
@@ -777,11 +791,18 @@ ShellRoot {
     }
     function previewLock() { exec(["sh", "-c", "pidof hyprlock || hyprlock"]); Qt.quit(); }
     function setMonitorMode(m) {
-        // m: "internal" | "extend" | "external"
-        outputs.forEach(o => {
-            const on = m === "extend" || (m === "internal" ? o.internal : !o.internal);
-            exec(["niri", "msg", "output", o.name, on ? "on" : "off"]);
-        });
+        // m: "internal" | "mirror" | "extend" | "external"
+        if (m === "mirror") {
+            exec(["sh", "-c", 'exec "$HOME/.local/bin/fr-mirror" on']);
+            monRefresh.interval = 1500;
+        } else {
+            exec(["sh", "-c", 'exec "$HOME/.local/bin/fr-mirror" off']);
+            outputs.forEach(o => {
+                const on = m === "extend" || (m === "internal" ? o.internal : !o.internal);
+                exec(["niri", "msg", "output", o.name, on ? "on" : "off"]);
+            });
+            monRefresh.interval = 500;
+        }
         monRefresh.restart();
     }
     Timer { id: monRefresh; interval: 500; onTriggered: outProc.running = true }
@@ -790,7 +811,8 @@ ShellRoot {
         const i = outputs.filter(o => o.internal), x = outputs.filter(o => !o.internal);
         if (x.length === 0) return "internal";
         const iOn = i.some(o => o.on), xOn = x.some(o => o.on);
-        return iOn && xOn ? "extend" : xOn ? "external" : "internal";
+        if (iOn && xOn) return mirrorOn ? "mirror" : "extend";
+        return xOn ? "external" : "internal";
     }
 
     function power(action) {
@@ -1411,7 +1433,7 @@ ShellRoot {
                                 width: parent.width
                                 glyph: root.ic(0xf0379)
                                 label: "Monitor"
-                                value: ({ internal: "Laptop saja", extend: "Extend", external: "Monitor saja" })[root.monitorMode]
+                                value: ({ internal: "Laptop saja", mirror: "Mirror", extend: "Extend", external: "Monitor saja" })[root.monitorMode]
                                 onClicked: root.page = "monitor"
                                 Component.onCompleted: outProc.running = true
                             }
@@ -2936,6 +2958,7 @@ ShellRoot {
                             Repeater {
                                 model: [
                                     { id: "internal", label: "Laptop saja",  cp: 0xf0322 },
+                                    { id: "mirror",   label: "Mirror",       cp: 0xf1483 },
                                     { id: "extend",   label: "Extend",       cp: 0xf037a },
                                     { id: "external", label: "Monitor saja", cp: 0xf06e7 }
                                 ]
@@ -2943,8 +2966,9 @@ ShellRoot {
                                     id: mm
                                     required property var modelData
                                     readonly property bool cur: root.monitorMode === modelData.id
-                                    readonly property bool can: modelData.id === "internal" || root.hasExternal
-                                    width: (parent.width - 16) / 3
+                                    readonly property bool can: modelData.id === "internal"
+                                        || (root.hasExternal && (modelData.id !== "mirror" || root.hasWlMirror))
+                                    width: (parent.width - 24) / 4
                                     height: 78
                                     radius: 14
                                     opacity: can ? 1 : 0.4
@@ -3015,6 +3039,15 @@ ShellRoot {
                                     }
                                 }
                             }
+                        }
+                        Text {
+                            visible: root.monitorMode === "mirror" || (root.hasExternal && !root.hasWlMirror)
+                            width: parent.width
+                            wrapMode: Text.Wrap
+                            text: !root.hasWlMirror ? "Mode Mirror butuh wl-mirror: sudo pacman -S wl-mirror"
+                                : "Mirror: isi layar laptop tampil di monitor. Kerja tetap di layar laptop; kursor yang pindah ke monitor akan masuk ke jendela mirror."
+                            color: root.hasWlMirror ? root.cText : root.cWarn
+                            font { family: root.fUi; pixelSize: 11 }
                         }
                         Text {
                             width: parent.width

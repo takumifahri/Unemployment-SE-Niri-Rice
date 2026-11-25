@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# FR Navy v19.1: tombol daya di lockscreen (fr-lockpower), cek /etc/sddm.conf; v19: layar login SDDM ikut tema, foto, dan wallpaper lockscreen (fr-sddm); v18: dock bawah auto-hide (fr-dock); v17: riwayat clipboard + emoji, indikator hotspot di waybar, repo Git; v16.2: hotspot lewat hostapd (jalan dengan iwd); v16: hotspot dari Wi-Fi laptop (fr-hotspot); v15: batas pengisian baterai (fr-charge); v14: pilih area QR + pembaca zxing; Wi-Fi via QR; alat (screenshot, rekam, warna, scratchpad, kalender); mode daya + profil; optimasi performa; palet tema; lockscreen baru + wallpaper lock terpisah + monitor sistem; control center lengkap + popup wifi/volume/brightness, sysinfo waybar, launcher ber-grup
+# FR Navy v19.2: mode Mirror untuk monitor (fr-mirror, wl-mirror); v19.1: tombol daya di lockscreen (fr-lockpower), cek /etc/sddm.conf; v19: layar login SDDM ikut tema, foto, dan wallpaper lockscreen (fr-sddm); v18: dock bawah auto-hide (fr-dock); v17: riwayat clipboard + emoji, indikator hotspot di waybar, repo Git; v16.2: hotspot lewat hostapd (jalan dengan iwd); v16: hotspot dari Wi-Fi laptop (fr-hotspot); v15: batas pengisian baterai (fr-charge); v14: pilih area QR + pembaca zxing; Wi-Fi via QR; alat (screenshot, rekam, warna, scratchpad, kalender); mode daya + profil; optimasi performa; palet tema; lockscreen baru + wallpaper lock terpisah + monitor sistem; control center lengkap + popup wifi/volume/brightness, sysinfo waybar, launcher ber-grup
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
 
 # paket wajib + opsional
 need=()
-for p in "magick:imagemagick" "playerctl:playerctl" "grim:grim" "slurp:slurp" "satty:satty" "hyprpicker:hyprpicker" "wl-copy:wl-clipboard" "cliphist:cliphist" "wtype:wtype" "curl:curl" "ZXingReader:zxing-cpp" "zbarcam:zbar" "qrencode:qrencode" "dnsmasq:dnsmasq" "hostapd:hostapd" "nft:nftables" "iw:iw" "nmcli:networkmanager" "powerprofilesctl:power-profiles-daemon" "pactl:libpulse" \
+for p in "magick:imagemagick" "playerctl:playerctl" "grim:grim" "slurp:slurp" "satty:satty" "hyprpicker:hyprpicker" "wl-copy:wl-clipboard" "cliphist:cliphist" "wtype:wtype" "curl:curl" "ZXingReader:zxing-cpp" "zbarcam:zbar" "qrencode:qrencode" "dnsmasq:dnsmasq" "hostapd:hostapd" "wl-mirror:wl-mirror" "nft:nftables" "iw:iw" "nmcli:networkmanager" "powerprofilesctl:power-profiles-daemon" "pactl:libpulse" \
          "brightnessctl:brightnessctl" "btop:btop" "wlsunset:wlsunset" "bluetoothctl:bluez-utils"; do
   command -v "${p%%:*}" >/dev/null || need+=("${p#*:}")
 done
@@ -43,7 +43,7 @@ fi
 cp "$HERE/theme/themes.json" "$CFG/fr-theme/"
 saved_theme=$(cat "$CFG/fr-theme/current" 2>/dev/null || echo navy)
 echo navy > "$CFG/fr-theme/current"
-install -m755 "$HERE/bin/fr-toggle" "$HERE/bin/fr-sysmon-sample" "$HERE/bin/fr-theme" "$HERE/bin/fr-thumbs" "$HERE/bin/fr-power" "$HERE/bin/fr-avatar" "$HERE/bin/fr-media" "$HERE/bin/fr-lockstyle" "$HERE/bin/fr-shot" "$HERE/bin/fr-pick" "$HERE/bin/fr-scratch" "$HERE/bin/fr-rec" "$HERE/bin/fr-weather" "$HERE/bin/fr-wifiqr" "$HERE/bin/fr-charge" "$HERE/bin/fr-hotspot" "$HERE/bin/fr-hotspot-bar" "$HERE/bin/fr-clip" "$HERE/bin/fr-emoji" "$HERE/bin/fr-dock" "$HERE/bin/fr-sddm" "$HERE/bin/fr-lockpower" "$HOME/.local/bin/"
+install -m755 "$HERE/bin/fr-toggle" "$HERE/bin/fr-sysmon-sample" "$HERE/bin/fr-theme" "$HERE/bin/fr-thumbs" "$HERE/bin/fr-power" "$HERE/bin/fr-avatar" "$HERE/bin/fr-media" "$HERE/bin/fr-lockstyle" "$HERE/bin/fr-shot" "$HERE/bin/fr-pick" "$HERE/bin/fr-scratch" "$HERE/bin/fr-rec" "$HERE/bin/fr-weather" "$HERE/bin/fr-wifiqr" "$HERE/bin/fr-charge" "$HERE/bin/fr-hotspot" "$HERE/bin/fr-hotspot-bar" "$HERE/bin/fr-clip" "$HERE/bin/fr-emoji" "$HERE/bin/fr-dock" "$HERE/bin/fr-sddm" "$HERE/bin/fr-lockpower" "$HERE/bin/fr-mirror" "$HOME/.local/bin/"
 cp "$HERE/waybar/config.jsonc" "$HERE/waybar/style.css" "$CFG/waybar/"
 cp "$HERE/fuzzel/fuzzel.ini" "$CFG/fuzzel/"
 # lockscreen: file gaya selalu diperbarui; hyprlock.conf cuma menunjuk gaya pilihanmu

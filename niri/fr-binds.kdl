@@ -31,6 +31,13 @@ window-rule {
     open-floating true
 }
 
+// mode Mirror (fr-mirror): jendela wl-mirror langsung fullscreen di monitor tujuan
+window-rule {
+    match app-id=r#"^at\.yrlf\.wl_mirror$"#
+    open-fullscreen true
+    open-focused false
+}
+
 // Zoom: popup kecil (toolbar share screen, video melayang, pengaturan, chat)
 // jangan di-tile jadi kolom. Jendela meeting utama tetap normal.
 window-rule {
